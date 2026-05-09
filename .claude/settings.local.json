@@ -46,7 +46,11 @@
       "Bash(ConvertFrom-Json)",
       "Bash(Select-Object -ExpandProperty scripts)",
       "Bash(sed -n '1010,1110p' /tmp/figma-test-output.json)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(node dist/bin.js fetch \"https://www.figma.com/design/SUdTgwSabj8m9d1qKv8mOg/WWMB?node-id=85-46\" --json --depth=10)",
+      "Bash(Get-ChildItem -Path \"e:\\\\mcp_project\\\\figma-developer-mcp\\\\src\" -Recurse -Name)",
+      "Bash(Get-ChildItem -Recurse -Name src/tests/)",
+      "Bash(Select-Object)"
     ]
   }
 }

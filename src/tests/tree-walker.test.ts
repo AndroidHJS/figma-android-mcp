@@ -469,7 +469,7 @@ describe("simplifyRawFigmaObject", () => {
     });
   });
 
-  it("filters imageAssets to only exportSettings when present", async () => {
+  it("keeps both exportSettings and auto-inferred image assets", async () => {
     const exportedNode = makeNode({
       id: "21:1",
       name: "Export Me",
@@ -506,11 +506,7 @@ describe("simplifyRawFigmaObject", () => {
 
     const result = await simplifyRawFigmaObject(mockResponse, allExtractors);
 
-    expect(result.imageAssets).toHaveLength(1);
-    expect(result.imageAssets[0]).toMatchObject({
-      nodeId: "21:1",
-      reason: "node has exportSettings",
-    });
+    expect(result.imageAssets).toHaveLength(2);
   });
 
   it("keeps all imageAssets when no exportSettings node exists", async () => {
@@ -776,7 +772,7 @@ describe("exportSettings detection", () => {
     });
   });
 
-  it("includes only exportSettings assets when any node has exportSettings", async () => {
+  it("collects both exportSettings and auto-inferred assets in traversalState", async () => {
     const exportedNode = makeNode({
       id: "66:1",
       name: "Export Me",
@@ -796,7 +792,8 @@ describe("exportSettings detection", () => {
       allExtractors,
     );
 
-    // traversalState still has all assets (filtering happens in simplifyRawFigmaObject)
+    expect(traversalState.imageAssets).toHaveLength(2);
+
     const exportAssets = traversalState.imageAssets.filter(
       (a) => a.reason === "node has exportSettings",
     );
