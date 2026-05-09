@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"g:\\\\TestProject\\\\figma-developer-mcp\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Get-ChildItem -Path \"g:\\\\TestProject\\\\figma-developer-mcp\" -Recurse -Depth 2)",
+      "Bash(Select-Object FullName)",
+      "Bash(find g:\\\\\\\\TestProject\\\\\\\\figma-developer-mcp -type f -name \"*.ts\" -o -name \"*.md\" -o -name \"*.json\")",
+      "Bash(xargs ls -la)",
+      "Read(//c/Users/Administrator/.claude/plans/**)",
+      "Read(//c/Users/Administrator/.claude//**)",
+      "Bash(pnpm type-check *)",
+      "Bash(pnpm test *)",
+      "Bash(pnpm build *)",
+      "Bash(pnpm inspect *)",
+      "Bash(pnpm start *)",
+      "Bash(curl -s -X POST http://127.0.0.1:3333/mcp -H \"Content-Type: application/json\" -H \"X-Figma-Token: YOUR_FIGMA_TOKEN\" -H \"Accept: application/json, text/event-stream\" -d \"{\\\\\"jsonrpc\\\\\":\\\\\"2.0\\\\\",\\\\\"id\\\\\":1,\\\\\"method\\\\\":\\\\\"initialize\\\\\",\\\\\"params\\\\\":{\\\\\"protocolVersion\\\\\":\\\\\"2024-11-05\\\\\",\\\\\"capabilities\\\\\":{},\\\\\"clientInfo\\\\\":{\\\\\"name\\\\\":\\\\\"test\\\\\",\\\\\"version\\\\\":\\\\\"1.0.0\\\\\"}}}\")",
+      "Bash(curl -s -X POST http://127.0.0.1:3333/mcp -H \"Content-Type: application/json\" -H \"X-Figma-Token: YOUR_FIGMA_TOKEN\" -H \"Accept: application/json, text/event-stream\" -d \"{\\\\\"jsonrpc\\\\\":\\\\\"2.0\\\\\",\\\\\"method\\\\\":\\\\\"notifications/initialized\\\\\"}\")",
+      "Bash(curl -s -X POST http://127.0.0.1:3333/mcp -H \"Content-Type: application/json\" -H \"X-Figma-Token: YOUR_FIGMA_TOKEN\" -H \"Accept: application/json, text/event-stream\" -d \"{\\\\\"jsonrpc\\\\\":\\\\\"2.0\\\\\",\\\\\"id\\\\\":2,\\\\\"method\\\\\":\\\\\"tools/call\\\\\",\\\\\"params\\\\\":{\\\\\"name\\\\\":\\\\\"get_figma_data\\\\\",\\\\\"arguments\\\\\":{\\\\\"fileKey\\\\\":\\\\\"SUdTgwSabj8m9d1qKv8mOg\\\\\",\\\\\"nodeId\\\\\":\\\\\"216:1230\\\\\"}}}\")",
+      "Bash(curl -s -X POST http://127.0.0.1:3333/mcp -H \"Content-Type: application/json\" -H \"X-Figma-Token: YOUR_FIGMA_TOKEN\" -H \"Accept: application/json, text/event-stream\" -d \"{\\\\\"jsonrpc\\\\\":\\\\\"2.0\\\\\",\\\\\"id\\\\\":3,\\\\\"method\\\\\":\\\\\"tools/call\\\\\",\\\\\"params\\\\\":{\\\\\"name\\\\\":\\\\\"download_figma_images\\\\\",\\\\\"arguments\\\\\":{\\\\\"fileKey\\\\\":\\\\\"SUdTgwSabj8m9d1qKv8mOg\\\\\",\\\\\"nodes\\\\\":[{\\\\\"nodeId\\\\\":\\\\\"216:1230\\\\\",\\\\\"fileName\\\\\":\\\\\"contact_info_hero.png\\\\\"},{\\\\\"nodeId\\\\\":\\\\\"216:1232\\\\\",\\\\\"fileName\\\\\":\\\\\"progress_section.png\\\\\"},{\\\\\"nodeId\\\\\":\\\\\"216:1249\\\\\",\\\\\"fileName\\\\\":\\\\\"status_icons.png\\\\\"},{\\\\\"nodeId\\\\\":\\\\\"216:1246\\\\\",\\\\\"fileName\\\\\":\\\\\"status_bar.png\\\\\"},{\\\\\"nodeId\\\\\":\\\\\"I311:2809;311:2797\\\\\",\\\\\"fileName\\\\\":\\\\\"ic_back.png\\\\\"},{\\\\\"nodeId\\\\\":\\\\\"216:1240\\\\\",\\\\\"fileName\\\\\":\\\\\"progress_badge.png\\\\\"}],\\\\\"densities\\\\\":[\\\\\"xhdpi\\\\\",\\\\\"xxhdpi\\\\\"]}}}\")",
+      "Bash(curl -s -X POST http://127.0.0.1:3333/mcp -H \"Content-Type: application/json\" -H \"X-Figma-Token: YOUR_FIGMA_TOKEN\" -H \"Accept: application/json, text/event-stream\" -d \"{\\\\\"jsonrpc\\\\\":\\\\\"2.0\\\\\",\\\\\"id\\\\\":4,\\\\\"method\\\\\":\\\\\"tools/call\\\\\",\\\\\"params\\\\\":{\\\\\"name\\\\\":\\\\\"download_figma_images\\\\\",\\\\\"arguments\\\\\":{\\\\\"fileKey\\\\\":\\\\\"SUdTgwSabj8m9d1qKv8mOg\\\\\",\\\\\"localPath\\\\\":\\\\\"res\\\\\",\\\\\"nodes\\\\\":[{\\\\\"nodeId\\\\\":\\\\\"216:1232\\\\\",\\\\\"fileName\\\\\":\\\\\"progress_section.png\\\\\"},{\\\\\"nodeId\\\\\":\\\\\"I311:2809;311:2797\\\\\",\\\\\"fileName\\\\\":\\\\\"ic_back.png\\\\\"},{\\\\\"nodeId\\\\\":\\\\\"216:1240\\\\\",\\\\\"fileName\\\\\":\\\\\"progress_badge.png\\\\\"},{\\\\\"nodeId\\\\\":\\\\\"I291:785;291:757\\\\\",\\\\\"fileName\\\\\":\\\\\"ic_shield.png\\\\\"},{\\\\\"nodeId\\\\\":\\\\\"I311:2732;307:1876\\\\\",\\\\\"fileName\\\\\":\\\\\"ic_relation.png\\\\\"},{\\\\\"nodeId\\\\\":\\\\\"I311:2732;297:1674\\\\\",\\\\\"fileName\\\\\":\\\\\"ic_next.png\\\\\"}],\\\\\"densities\\\\\":[\\\\\"xhdpi\\\\\",\\\\\"xxhdpi\\\\\"]}}}\")",
+      "Bash(curl -s -X POST http://127.0.0.1:3333/mcp -H \"Content-Type: application/json\" -H \"X-Figma-Token: YOUR_FIGMA_TOKEN\" -H \"Accept: application/json, text/event-stream\" -d \"{\\\\\"jsonrpc\\\\\":\\\\\"2.0\\\\\",\\\\\"id\\\\\":5,\\\\\"method\\\\\":\\\\\"tools/call\\\\\",\\\\\"params\\\\\":{\\\\\"name\\\\\":\\\\\"download_figma_images\\\\\",\\\\\"arguments\\\\\":{\\\\\"fileKey\\\\\":\\\\\"SUdTgwSabj8m9d1qKv8mOg\\\\\",\\\\\"localPath\\\\\":\\\\\"res\\\\\",\\\\\"nodes\\\\\":[{\\\\\"nodeId\\\\\":\\\\\"216:1231\\\\\",\\\\\"fileName\\\\\":\\\\\"bg_rectangle.png\\\\\"},{\\\\\"nodeId\\\\\":\\\\\"I311:2733;311:2556\\\\\",\\\\\"fileName\\\\\":\\\\\"ic_phone.png\\\\\"},{\\\\\"nodeId\\\\\":\\\\\"311:2735\\\\\",\\\\\"fileName\\\\\":\\\\\"ic_contacts.png\\\\\"},{\\\\\"nodeId\\\\\":\\\\\"216:1356\\\\\",\\\\\"fileName\\\\\":\\\\\"home_indicator.png\\\\\"},{\\\\\"nodeId\\\\\":\\\\\"216:1242\\\\\",\\\\\"fileName\\\\\":\\\\\"progress_label.png\\\\\"}],\\\\\"densities\\\\\":[\\\\\"xhdpi\\\\\",\\\\\"xxhdpi\\\\\"]}}}\")",
+      "Bash(netstat -ano)",
+      "Bash(findstr \"3333\")",
+      "Bash(taskkill /F /PID 18388)",
+      "PowerShell(Stop-Process -Id 18388 -Force -ErrorAction SilentlyContinue)",
+      "Bash(node dist/bin.js)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 3333 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }; Write-Output \"Port 3333 cleared\")",
+      "Bash(python3 -c ' *)",
+      "Bash(Get-ChildItem -Directory -Name)",
+      "Bash(Get-ChildItem -Path \"g:\\\\TestProject\\\\figma-developer-mcp\\\\node_modules\\\\@figma\\\\rest-api-spec\" -Recurse -Filter \"*.ts\")",
+      "PowerShell($lines = Get-Content \"C:\\\\Users\\\\Administrator\\\\.claude\\\\projects\\\\g--TestProject-figma-developer-mcp\\\\f6b5fbac-23ff-4557-a7ea-89711762aede\\\\subagents\\\\agent-a4dfbd669ecedacf8.jsonl\"; foreach \\($line in $lines\\) { if \\($line -match \"exportSettings\"\\) { $line.Substring\\(0, [Math]::Min\\(3000, $line.Length\\)\\); Write-Output \"---END OF LINE---\" } })"
+    ]
+  }
+}
