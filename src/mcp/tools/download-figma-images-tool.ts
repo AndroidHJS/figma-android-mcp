@@ -128,7 +128,7 @@ async function downloadFigmaImages(
     await sendProgress(extra, 0, 3, "Resolving image downloads");
 
     let stopHeartbeat: (() => void) | undefined;
-    const { downloads, successCount } = await runDownloadFigmaImages(
+    const { downloads, successCount, duplicatesRemoved } = await runDownloadFigmaImages(
       figmaService,
       { fileKey, nodes, localPath: resolvedPath, densities },
       {
@@ -156,6 +156,9 @@ async function downloadFigmaImages(
       .map((d) => `${d}: ${successCount[d]}`)
       .join(", ");
 
+    const dedupNote =
+      duplicatesRemoved > 0 ? ` (${duplicatesRemoved} duplicate${duplicatesRemoved > 1 ? "s" : ""} removed)` : "";
+
     const MAX_LIST_ITEMS = 20;
     const imagesList = downloads.slice(0, MAX_LIST_ITEMS)
       .map(({ perDensity, requestedFileNames }) => {
@@ -179,7 +182,7 @@ async function downloadFigmaImages(
       content: [
         {
           type: "text" as const,
-          text: `Downloaded ${totalSuccess} images (${densityCounts}) to \`${resolvedPath}\`:\n${imagesList}${overflow}`,
+          text: `Downloaded ${totalSuccess} images (${densityCounts})${dedupNote} to \`${resolvedPath}\`:\n${imagesList}${overflow}`,
         },
       ],
     };

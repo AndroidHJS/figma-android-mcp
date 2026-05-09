@@ -5,6 +5,7 @@ import type {
   Node as FigmaDocumentNode,
 } from "@figma/rest-api-spec";
 import { formatRGBAColor } from "~/transformers/style.js";
+import { dpString } from "~/utils/units.js";
 import { hasValue } from "~/utils/identity.js";
 
 export type SimplifiedEffects = {
@@ -58,13 +59,13 @@ export function buildSimplifiedEffects(n: FigmaDocumentNode): SimplifiedEffects 
 }
 
 function simplifyDropShadow(effect: DropShadowEffect) {
-  return `${effect.offset.x}dp ${effect.offset.y}dp ${effect.radius}dp ${effect.spread ?? 0}dp ${formatRGBAColor(effect.color)}`;
+  return `${dpString(effect.offset.x)} ${dpString(effect.offset.y)} ${dpString(effect.radius)} ${dpString(effect.spread ?? 0)} ${formatRGBAColor(effect.color)}`;
 }
 
 function simplifyInnerShadow(effect: InnerShadowEffect) {
-  return `inset ${effect.offset.x}dp ${effect.offset.y}dp ${effect.radius}dp ${effect.spread ?? 0}dp ${formatRGBAColor(effect.color)}`;
+  return `inset ${dpString(effect.offset.x)} ${dpString(effect.offset.y)} ${dpString(effect.radius)} ${dpString(effect.spread ?? 0)} ${formatRGBAColor(effect.color)}`;
 }
 
 function simplifyBlur(effect: BlurEffect) {
-  return `blur(${effect.radius}dp)`;
+  return `blur(${dpString(effect.radius)})`;
 }

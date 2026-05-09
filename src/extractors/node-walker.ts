@@ -133,15 +133,23 @@ async function processNodeWithExtractors(
   // If the node ended up as IMAGE-PNG (from VECTOR → IMAGE-PNG mapping,
   // collapseRasterContainers, or exportSettings), flag it for download
   // so the AI doesn't try to recreate it with code.
-  // visualsExtractor may have already added this node with "contains image fills"
-  // reason; IMAGE-PNG takes priority so we don't double-add.
-  if (result.type === "IMAGE-PNG" && !context.traversalState.imageAssets.some((a) => a.nodeId === node.id)) {
-    context.traversalState.imageAssets.push({
-      nodeId: node.id,
-      name: node.name,
-      reason: hasExportSettings(node) ? "node has exportSettings" : "IMAGE-PNG node",
-      suggestedFileName: toImageFileName(node.name),
-    });
+  if (result.type === "IMAGE-PNG") {
+    const existingIdx = context.traversalState.imageAssets.findIndex(
+      (a) => a.nodeId === node.id,
+    );
+    if (existingIdx === -1) {
+      context.traversalState.imageAssets.push({
+        nodeId: node.id,
+        name: node.name,
+        reason: hasExportSettings(node) ? "node has exportSettings" : "IMAGE-PNG node",
+        suggestedFileName: toImageFileName(node.name),
+      });
+    } else if (hasExportSettings(node)) {
+      // visualsExtractor may have already added this node with "contains image fills";
+      // exportSettings is the designer's explicit signal and takes priority.
+      context.traversalState.imageAssets[existingIdx].reason =
+        "node has exportSettings";
+    }
   }
 
   return result;

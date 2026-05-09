@@ -31,6 +31,15 @@ export async function simplifyRawFigmaObject(
     traversalState,
   } = await extractFromDesign(rawNodes, nodeExtractors, options, { styles: {} }, extraStyles);
 
+  // If the designer explicitly marked any node with exportSettings, only include
+  // those — discard auto-inferred IMAGE-PNG and image-fill assets.
+  const hasExportSettingsAssets = traversalState.imageAssets.some(
+    (a) => a.reason === "node has exportSettings",
+  );
+  const imageAssets = hasExportSettingsAssets
+    ? traversalState.imageAssets.filter((a) => a.reason === "node has exportSettings")
+    : traversalState.imageAssets;
+
   return {
     ...metadata,
     nodes: extractedNodes,
@@ -40,7 +49,7 @@ export async function simplifyRawFigmaObject(
       traversalState.componentPropertyDefinitions,
     ),
     globalVars: { styles: finalGlobalVars.styles },
-    imageAssets: traversalState.imageAssets,
+    imageAssets,
   };
 }
 

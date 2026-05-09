@@ -55,6 +55,10 @@ const argv = cli({
       type: Boolean,
       description: "Disable usage telemetry (telemetry is on by default)",
     },
+    outputPlatform: {
+      type: String,
+      description: "Output platform: compose (default) or views (Android traditional View system)",
+    },
   },
   commands: [fetchCommand],
 });

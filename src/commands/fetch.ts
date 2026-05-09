@@ -1,5 +1,5 @@
 import { type Command, command } from "cleye";
-import { loadEnvFile, resolveAuth, requireGlobalCredentials, UsageError } from "~/config.js";
+import { loadEnvFile, resolveAuth, requireGlobalCredentials, UsageError, type OutputPlatform } from "~/config.js";
 import { FigmaService } from "~/services/figma.js";
 import { parseFigmaUrl } from "~/utils/figma-url.js";
 import { authMode, initTelemetry, captureGetFigmaDataCall, shutdown } from "~/telemetry/index.js";
@@ -43,6 +43,10 @@ export const fetchCommand: Command = command(
         type: Boolean,
         description: "Disable usage telemetry",
       },
+      outputPlatform: {
+        type: String,
+        description: "Output platform: compose (default) or views",
+      },
     },
   },
   (argv) => {
@@ -65,6 +69,7 @@ async function run(
     figmaOauthToken?: string;
     env?: string;
     noTelemetry?: boolean;
+    outputPlatform?: string;
   },
   positionals: string[],
 ) {
@@ -104,11 +109,13 @@ async function run(
 
   const mode = authMode(auth);
   const outputFormat = flags.json ? "json" : "yaml";
+  const outputPlatform: OutputPlatform = (flags.outputPlatform as OutputPlatform) ?? "compose";
 
   const result = await getFigmaData(
     new FigmaService(auth),
     { fileKey, nodeId, depth: flags.depth },
     outputFormat,
+    outputPlatform,
     {
       onComplete: (outcome) =>
         captureGetFigmaDataCall(outcome, { transport: "cli", authMode: mode }),

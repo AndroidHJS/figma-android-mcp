@@ -15,14 +15,32 @@ import {
   countNamedStyles,
   detectVariables,
 } from "~/services/get-figma-data-metrics.js";
+import { type Platform, mapLayoutStyles } from "~/platform-mappers/index.js";
+import {
+  inferAutoLayoutFromPositions,
+  convertFixedChildrenToFillMax,
+} from "~/transformers/layout.js";
 
 export type { GetFigmaDataMetrics } from "~/services/get-figma-data-metrics.js";
 
-function generateComposeHints(screen: { width: string; height: string }): string[] {
+function generateLayoutHints(screen: { width: string; height: string }, platform: Platform): string[] {
   const w = screen.width;
   const h = screen.height;
   const wNum = parseFloat(w);
   const hNum = parseFloat(h);
+
+  if (platform === "views") {
+    return [
+      `Screen dimensions: ${w} wide x ${h} tall. Treat this as the baseline design size.`,
+      `When node width equals ${w}: Use layout_width="match_parent" instead of layout_width="${wNum}dp".`,
+      `When node width does NOT equal ${w}: Use the dp value as-is (e.g., layout_width="343dp").`,
+      `When node height equals ${h}: Use layout_height="match_parent" instead of layout_height="${hNum}dp".`,
+      `When node height does NOT equal ${h}: Use the dp value as-is.`,
+      `When both equal screen dimensions: Use layout_width="match_parent" layout_height="match_parent".`,
+      `For content centered in a parent and narrower than the parent: Use layout_gravity="center" layout_width="match_parent" with paddingLeft/paddingRight instead of layout_width="Wdp" + layout_gravity="center", where padding = (parentWidth - childWidth) / 2.`,
+    ];
+  }
+
   return [
     `Screen dimensions: ${w} wide x ${h} tall. Treat this as the baseline design size.`,
     `When node width equals ${w} (screen width): Use .fillMaxWidth() instead of .width(${wNum}.dp).`,
@@ -90,6 +108,7 @@ export async function getFigmaData(
   figmaService: FigmaService,
   input: GetFigmaDataInput,
   outputFormat: "yaml" | "json",
+  outputPlatform: Platform,
   hooks: GetFigmaDataHooks = {},
 ): Promise<GetFigmaDataResult> {
   const { fileKey, nodeId, depth } = input;
@@ -136,6 +155,14 @@ export async function getFigmaData(
     }
     const simplifyMs = Date.now() - simplifyStart;
 
+    // Infer auto-layout (Column/Row) from absolute positions for
+    // non-auto-layout frames whose children form recognizable patterns.
+    inferAutoLayoutFromPositions(simplifiedDesign.nodes, simplifiedDesign.globalVars);
+
+    // Convert centered fixed-width/height children to fill + padding so the
+    // output directly expresses responsive layout instead of fixed dimensions.
+    convertFixedChildrenToFillMax(simplifiedDesign.nodes, simplifiedDesign.globalVars);
+
     writeLogs("figma-simplified.json", simplifiedDesign);
 
     const rawNodeCount = nodeCounter.count;
@@ -148,8 +175,14 @@ export async function getFigmaData(
     let formatted: string;
     try {
       const { nodes, globalVars, imageAssets, screen, ...metadata } = simplifiedDesign;
-      const composeHints = screen ? generateComposeHints(screen) : [];
-      const result = { metadata, nodes, globalVars, imageAssets, screen, composeHints };
+
+      // Transform layout style values to platform-native terminology.
+      // Nodes reference layout styles by string ID, so replacing values in
+      // globalVars automatically updates the output for all referencing nodes.
+      mapLayoutStyles(globalVars, outputPlatform);
+
+      const layoutHints = screen ? generateLayoutHints(screen, outputPlatform) : [];
+      const result = { metadata, nodes, globalVars, imageAssets, screen, layoutHints };
       formatted = serializeResult(result, outputFormat);
     } catch (error) {
       tagError(error, { phase: "serialize" });

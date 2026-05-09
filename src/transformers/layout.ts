@@ -4,7 +4,7 @@ import type {
   HasFramePropertiesTrait,
   HasLayoutTrait,
 } from "@figma/rest-api-spec";
-import { generateShorthand, pixelRound } from "~/utils/common.js";
+import { generateShorthand, generateVarId } from "~/utils/common.js";
 import { dpString } from "~/utils/units.js";
 
 export interface SimplifiedLayout {
@@ -30,9 +30,15 @@ export interface SimplifiedLayout {
   };
   overflowScroll?: ("x" | "y")[];
   position?: "absolute";
+  constraints?: {
+    horizontal: "MIN" | "MAX" | "CENTER" | "STRETCH" | "SCALE";
+    vertical: "MIN" | "MAX" | "CENTER" | "STRETCH" | "SCALE";
+  };
 }
 
 // Convert Figma's layout config into a more typical flex-like schema
+import type { GlobalVars, SimplifiedNode } from "~/extractors/types.js";
+
 export function buildSimplifiedLayout(
   n: FigmaDocumentNode,
   parent?: FigmaDocumentNode,
@@ -126,6 +132,49 @@ function gapShorthand(row?: number, col?: number): string | undefined {
   return dpString((row ?? col)!);
 }
 
+// Map Figma LayoutConstraint to CSS-flex terms.
+// Defaults (LEFT/TOP) become MIN and are omitted from output.
+function simplifyConstraints(
+  c?: HasLayoutTrait["constraints"],
+): SimplifiedLayout["constraints"] {
+  if (!c) return undefined;
+
+  const mapHorizontal = (h: string) => {
+    switch (h) {
+      case "LEFT":
+        return undefined; // default
+      case "RIGHT":
+        return "MAX";
+      case "CENTER":
+        return "CENTER";
+      case "LEFT_RIGHT":
+        return "STRETCH";
+      case "SCALE":
+        return "SCALE";
+    }
+  };
+
+  const mapVertical = (v: string) => {
+    switch (v) {
+      case "TOP":
+        return undefined; // default
+      case "BOTTOM":
+        return "MAX";
+      case "CENTER":
+        return "CENTER";
+      case "TOP_BOTTOM":
+        return "STRETCH";
+      case "SCALE":
+        return "SCALE";
+    }
+  };
+
+  const h = mapHorizontal(c.horizontal);
+  const v = mapVertical(c.vertical);
+  if (!h && !v) return undefined;
+  return { horizontal: h ?? "MIN", vertical: v ?? "MIN" };
+}
+
 // interpret sizing
 function convertSizing(
   s?: HasLayoutTrait["layoutSizingHorizontal"] | HasLayoutTrait["layoutSizingVertical"],
@@ -212,6 +261,7 @@ function buildSimplifiedLayoutValues(
         y: dpString(n.absoluteBoundingBox.y - parent.absoluteBoundingBox.y),
       };
     }
+    layoutValues.constraints = simplifyConstraints((n as HasLayoutTrait).constraints);
   }
 
   // Handle dimensions based on layout growth and alignment
@@ -251,4 +301,329 @@ function buildSimplifiedLayoutValues(
   }
 
   return layoutValues;
+}
+
+// ---------------------------------------------------------------------------
+// Layout inference — detect Column/Row patterns from absolute positions
+// ---------------------------------------------------------------------------
+
+/** Tolerance (in dp) for treating x or y offsets as "aligned". */
+const ALIGN_TOLERANCE = 2;
+
+/** Tolerance (in dp) for treating gaps between children as "consistent". */
+const GAP_TOLERANCE = 1;
+
+/** Extract the numeric value from a dp string like "8dp" or "16.5dp". */
+function parseDp(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const num = parseFloat(value);
+  return isNaN(num) ? undefined : num;
+}
+
+interface ChildLayoutData {
+  node: SimplifiedNode;
+  layout: SimplifiedLayout;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Walk the simplified node tree and convert non-auto-layout frames whose
+ * children form recognizable Column or Row patterns into flex layouts.
+ *
+ * Mutates `globalVars.styles` in-place — children that are folded into an
+ * inferred flex layout have `locationRelativeToParent` and `constraints`
+ * removed from their layout styles.
+ */
+export function inferAutoLayoutFromPositions(
+  nodes: SimplifiedNode[],
+  globalVars: GlobalVars,
+): void {
+  for (const node of nodes) {
+    if (node.children && node.children.length > 0) {
+      inferForNode(node, globalVars);
+      inferAutoLayoutFromPositions(node.children, globalVars);
+    }
+  }
+}
+
+function inferForNode(parent: SimplifiedNode, globalVars: GlobalVars): void {
+  if (!parent.layout) return;
+
+  const parentLayout = globalVars.styles[parent.layout] as SimplifiedLayout | undefined;
+  if (!parentLayout || parentLayout.mode !== "none") return;
+
+  const childData = collectEligibleChildren(parent.children!, globalVars);
+  if (childData.length < 2) return;
+
+  if (tryInferColumn(childData, parentLayout)) return;
+  tryInferRow(childData, parentLayout);
+}
+
+function collectEligibleChildren(
+  children: SimplifiedNode[],
+  globalVars: GlobalVars,
+): ChildLayoutData[] {
+  const result: ChildLayoutData[] = [];
+  for (const child of children) {
+    if (!child.layout) continue;
+    const layout = globalVars.styles[child.layout] as SimplifiedLayout | undefined;
+    if (!layout || !layout.locationRelativeToParent) continue;
+    if (layout.position === "absolute") continue;
+
+    const x = parseDp(layout.locationRelativeToParent.x);
+    const y = parseDp(layout.locationRelativeToParent.y);
+    const width = parseDp(layout.dimensions?.width);
+    const height = parseDp(layout.dimensions?.height);
+    if (x === undefined || y === undefined) continue;
+
+    result.push({ node: child, layout, x, y, width: width ?? 0, height: height ?? 0 });
+  }
+  return result;
+}
+
+// ---- Column detection ------------------------------------------------------
+
+function tryInferColumn(data: ChildLayoutData[], parentLayout: SimplifiedLayout): boolean {
+  const xValues = data.map((d) => d.x);
+  if (Math.max(...xValues) - Math.min(...xValues) > ALIGN_TOLERANCE) return false;
+
+  const sorted = [...data].sort((a, b) => a.y - b.y);
+
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const curBottom = sorted[i].y + sorted[i].height;
+    if (curBottom > sorted[i + 1].y) return false;
+  }
+
+  parentLayout.mode = "column";
+
+  const gap = computeConsistentGap(sorted, "column");
+  if (gap !== undefined) parentLayout.gap = gap;
+
+  for (const d of data) {
+    delete d.layout.locationRelativeToParent;
+    delete d.layout.constraints;
+  }
+
+  return true;
+}
+
+// ---- Row detection ---------------------------------------------------------
+
+function tryInferRow(data: ChildLayoutData[], parentLayout: SimplifiedLayout): boolean {
+  const yValues = data.map((d) => d.y);
+  if (Math.max(...yValues) - Math.min(...yValues) > ALIGN_TOLERANCE) return false;
+
+  const sorted = [...data].sort((a, b) => a.x - b.x);
+
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const curRight = sorted[i].x + sorted[i].width;
+    if (curRight > sorted[i + 1].x) return false;
+  }
+
+  parentLayout.mode = "row";
+
+  const gap = computeConsistentGap(sorted, "row");
+  if (gap !== undefined) parentLayout.gap = gap;
+
+  for (const d of data) {
+    delete d.layout.locationRelativeToParent;
+    delete d.layout.constraints;
+  }
+
+  return true;
+}
+
+// ---- Gap computation -------------------------------------------------------
+
+function computeConsistentGap(
+  sorted: ChildLayoutData[],
+  mode: "column" | "row",
+): string | undefined {
+  const gaps: number[] = [];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const curEnd = mode === "column"
+      ? sorted[i].y + sorted[i].height
+      : sorted[i].x + sorted[i].width;
+    const nextStart = mode === "column" ? sorted[i + 1].y : sorted[i + 1].x;
+    gaps.push(nextStart - curEnd);
+  }
+
+  if (gaps.length === 0) return undefined;
+
+  const min = Math.min(...gaps);
+  const max = Math.max(...gaps);
+  if (max - min > GAP_TOLERANCE) return undefined;
+
+  return dpString(Math.round(min));
+}
+
+// ---------------------------------------------------------------------------
+// Fill-max-width conversion — convert centered fixed-width/height children
+// inside auto-layout parents to fill + padding for responsive layout.
+// ---------------------------------------------------------------------------
+
+interface PaddingValues {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/** Parse CSS padding shorthand (e.g. "8dp", "16dp 12dp") to numeric values. */
+function parsePaddingShorthand(padding: string | undefined): PaddingValues {
+  if (!padding) return { top: 0, right: 0, bottom: 0, left: 0 };
+  const parts = padding.split(" ").map((p) => parseFloat(p));
+  if (parts.length === 1) return { top: parts[0], right: parts[0], bottom: parts[0], left: parts[0] };
+  if (parts.length === 2) return { top: parts[0], right: parts[1], bottom: parts[0], left: parts[1] };
+  if (parts.length === 3) return { top: parts[0], right: parts[1], bottom: parts[2], left: parts[1] };
+  return { top: parts[0], right: parts[1], bottom: parts[2], left: parts[3] };
+}
+
+interface ContentDims {
+  width?: number;
+  height?: number;
+}
+
+/** Compute parent content area by subtracting padding from outer dimensions. */
+function computeParentContentDims(parentLayout: SimplifiedLayout): ContentDims {
+  const outerWidth = parseDp(parentLayout.dimensions?.width);
+  const outerHeight = parseDp(parentLayout.dimensions?.height);
+  const pad = parsePaddingShorthand(parentLayout.padding);
+
+  return {
+    width: outerWidth !== undefined ? outerWidth - pad.left - pad.right : undefined,
+    height: outerHeight !== undefined ? outerHeight - pad.top - pad.bottom : undefined,
+  };
+}
+
+/**
+ * Walk the simplified node tree and convert centered fixed-width/height
+ * children inside auto-layout parents to fill + padding.
+ *
+ * Mutates `globalVars.styles` — cloned layouts are stored under new keys and
+ * affected nodes updated to reference the new key. Does not recurse into
+ * INSTANCE internal children (ids starting with "I").
+ */
+export function convertFixedChildrenToFillMax(
+  nodes: SimplifiedNode[],
+  globalVars: GlobalVars,
+): void {
+  for (const node of nodes) {
+    if (node.children && node.children.length > 0 && node.layout) {
+      const parentLayout = globalVars.styles[node.layout] as SimplifiedLayout | undefined;
+      if (parentLayout && (parentLayout.mode === "row" || parentLayout.mode === "column")) {
+        const parentDims = computeParentContentDims(parentLayout);
+        tryConvertChildren(node.children, parentLayout, parentDims, globalVars);
+      }
+    }
+    if (node.children) {
+      convertFixedChildrenToFillMax(node.children, globalVars);
+    }
+  }
+}
+
+function tryConvertChildren(
+  children: SimplifiedNode[],
+  parentLayout: SimplifiedLayout,
+  parentDims: ContentDims,
+  globalVars: GlobalVars,
+): void {
+  for (const child of children) {
+    if (!child.layout) continue;
+    if (child.id.startsWith("I")) continue;
+
+    const childLayout = globalVars.styles[child.layout] as SimplifiedLayout | undefined;
+    if (!childLayout) continue;
+    if (childLayout.mode === "row" || childLayout.mode === "column") continue;
+    if (childLayout.position === "absolute") continue;
+
+    if (parentLayout.mode === "column") {
+      tryConvertHorizontal(child, childLayout, parentLayout, parentDims, globalVars);
+    } else {
+      tryConvertVertical(child, childLayout, parentLayout, parentDims, globalVars);
+    }
+  }
+}
+
+function tryConvertHorizontal(
+  child: SimplifiedNode,
+  childLayout: SimplifiedLayout,
+  parentLayout: SimplifiedLayout,
+  parentDims: ContentDims,
+  globalVars: GlobalVars,
+): void {
+  if (childLayout.sizing?.horizontal !== "fixed") return;
+  if (!childLayout.dimensions?.width) return;
+  if (parentDims.width === undefined || parentDims.width <= 0) return;
+
+  const childWidth = parseFloat(childLayout.dimensions.width);
+  if (isNaN(childWidth) || childWidth >= parentDims.width) return;
+
+  const isCentered = parentLayout.alignItems === "center" || childLayout.alignSelf === "center";
+  if (!isCentered) return;
+
+  const paddingEach = Math.round((parentDims.width - childWidth) / 2);
+  if (paddingEach <= 0) return;
+
+  const clone: SimplifiedLayout = { ...childLayout };
+  clone.sizing = { ...clone.sizing, horizontal: "fill" };
+  if (clone.dimensions) {
+    const { width: _w, ...rest } = clone.dimensions;
+    clone.dimensions = Object.keys(rest).length > 0 ? rest : undefined;
+  }
+
+  const existing = parsePaddingShorthand(clone.padding);
+  clone.padding = generateShorthand({
+    top: existing.top,
+    right: existing.right + paddingEach,
+    bottom: existing.bottom,
+    left: existing.left + paddingEach,
+  });
+
+  const newKey = generateVarId("layout");
+  globalVars.styles[newKey] = clone;
+  child.layout = newKey;
+}
+
+function tryConvertVertical(
+  child: SimplifiedNode,
+  childLayout: SimplifiedLayout,
+  parentLayout: SimplifiedLayout,
+  parentDims: ContentDims,
+  globalVars: GlobalVars,
+): void {
+  if (childLayout.sizing?.vertical !== "fixed") return;
+  if (!childLayout.dimensions?.height) return;
+  if (parentDims.height === undefined || parentDims.height <= 0) return;
+
+  const childHeight = parseFloat(childLayout.dimensions.height);
+  if (isNaN(childHeight) || childHeight >= parentDims.height) return;
+
+  const isCentered = parentLayout.alignItems === "center" || childLayout.alignSelf === "center";
+  if (!isCentered) return;
+
+  const paddingEach = Math.round((parentDims.height - childHeight) / 2);
+  if (paddingEach <= 0) return;
+
+  const clone: SimplifiedLayout = { ...childLayout };
+  clone.sizing = { ...clone.sizing, vertical: "fill" };
+  if (clone.dimensions) {
+    const { height: _h, ...rest } = clone.dimensions;
+    clone.dimensions = Object.keys(rest).length > 0 ? rest : undefined;
+  }
+
+  const existing = parsePaddingShorthand(clone.padding);
+  clone.padding = generateShorthand({
+    top: existing.top + paddingEach,
+    right: existing.right,
+    bottom: existing.bottom + paddingEach,
+    left: existing.left,
+  });
+
+  const newKey = generateVarId("layout");
+  globalVars.styles[newKey] = clone;
+  child.layout = newKey;
 }

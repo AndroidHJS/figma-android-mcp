@@ -72,6 +72,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
   const serverOptions = {
     transport: config.isStdioMode ? ("stdio" as const) : ("http" as const),
     outputFormat: config.outputFormat as "yaml" | "json",
+    outputPlatform: config.outputPlatform,
     skipImageDownloads: config.skipImageDownloads,
     imageDir: config.imageDir,
   };

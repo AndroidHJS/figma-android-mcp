@@ -9,6 +9,7 @@ import {
   type Transport,
 } from "~/telemetry/index.js";
 import { getFigmaData as runGetFigmaData } from "~/services/get-figma-data.js";
+import type { OutputPlatform } from "~/config.js";
 
 const parameters = {
   fileKey: z
@@ -42,6 +43,7 @@ async function getFigmaData(
   params: GetFigmaDataParams,
   figmaService: FigmaService,
   outputFormat: "yaml" | "json",
+  outputPlatform: OutputPlatform,
   transport: Transport,
   authMode: AuthMode,
   clientInfo: ClientInfo | undefined,
@@ -63,7 +65,7 @@ async function getFigmaData(
     let stopFetchHeartbeat: (() => Promise<void>) | undefined;
     let stopSimplifyHeartbeat: (() => Promise<void>) | undefined;
 
-    const result = await runGetFigmaData(figmaService, { fileKey, nodeId, depth }, outputFormat, {
+    const result = await runGetFigmaData(figmaService, { fileKey, nodeId, depth }, outputFormat, outputPlatform, {
       onFetchStart: async () => {
         await sendProgress(extra, 0, 3, "Fetching design data from Figma API");
         stopFetchHeartbeat = startProgressHeartbeat(extra, "Waiting for Figma API response");
@@ -108,7 +110,7 @@ async function getFigmaData(
 export const getFigmaDataTool = {
   name: "get_figma_data",
   description:
-    "Get comprehensive Figma file data formatted for Android Jetpack Compose. Layout dimensions use dp units. Font sizes use sp units. Colors are hex/rgba. Vectors become IMAGE-PNG nodes. Component variants (VARIANT type) are surfaced with full option lists.\n\nCRITICAL — the output includes an `imageAssets` section listing every node that must be downloaded as a PNG. Before writing ANY code, call `download_figma_images` with the nodeIds from `imageAssets`. These are rendered images, not code-drawable elements — do not recreate them with Box/Canvas/Brush.\n\nOUTPUT SECTIONS — the output includes a `screen` field (design canvas dimensions in dp) and a `composeHints` field (responsive layout rules). Follow composeHints to produce adaptive Compose code: use fillMaxWidth()/fillMaxHeight()/fillMaxSize() when node dimensions match the screen size, and .fillMaxWidth().padding(horizontal = M.dp) instead of .width(W.dp) + center alignment for centered content narrower than the parent.",
+    "Get comprehensive Figma file data. Layout dimensions use dp units, font sizes use sp units. Colors are hex/rgba. Vectors become IMAGE-PNG nodes. Component variants (VARIANT type) are surfaced with full option lists.\n\nCRITICAL — the output includes an `imageAssets` section listing every node that must be downloaded as a PNG. Before writing ANY code, call `download_figma_images` with the nodeIds from `imageAssets`. These are rendered images, not code-drawable elements.\n\nOUTPUT SECTIONS — the output includes a `screen` field (design canvas dimensions in dp) and a `layoutHints` field (responsive layout rules). Layout fields are platform-native: `layout`/`arrangement`/`alignment`/`spacing`/`width`/`height` for Compose, or `orientation`/`gravity`/`layout_width`/`layout_height` for traditional Views. Follow layoutHints and use the layout fields directly in your code.",
   parametersSchema,
   handler: getFigmaData,
 } as const;

@@ -24,3 +24,5 @@ export {
   layoutOnly,
   collapseRasterContainers,
 } from "./extractors/index.js";
+
+export { inferAutoLayoutFromPositions } from "./transformers/layout.js";

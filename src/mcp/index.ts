@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { OutputPlatform } from "../config.js";
 import { FigmaService, type FigmaAuthOptions } from "../services/figma.js";
 import { Logger } from "../utils/logger.js";
 import { authMode, type AuthMode, type ClientInfo, type Transport } from "~/telemetry/index.js";
@@ -23,13 +24,14 @@ type ServerTransport = Extract<Transport, "stdio" | "http">;
 export type CreateServerOptions = {
   transport: ServerTransport;
   outputFormat?: "yaml" | "json";
+  outputPlatform?: OutputPlatform;
   skipImageDownloads?: boolean;
   imageDir?: string;
 };
 
 function createServer(
   authOptions: FigmaAuthOptions,
-  { transport, outputFormat = "yaml", skipImageDownloads = false, imageDir }: CreateServerOptions,
+  { transport, outputFormat = "yaml", outputPlatform = "compose", skipImageDownloads = false, imageDir }: CreateServerOptions,
 ) {
   const server = new McpServer(serverInfo);
   const figmaService = new FigmaService(authOptions);
@@ -45,6 +47,7 @@ function createServer(
     transport,
     authMode: mode,
     outputFormat,
+    outputPlatform,
     skipImageDownloads,
     imageDir,
     getClientInfo,
@@ -61,6 +64,7 @@ type RegisterToolsOptions = {
   transport: ServerTransport;
   authMode: AuthMode;
   outputFormat: "yaml" | "json";
+  outputPlatform: OutputPlatform;
   skipImageDownloads: boolean;
   imageDir?: string;
   getClientInfo: () => ClientInfo | undefined;
@@ -84,6 +88,7 @@ function registerTools(
         params,
         figmaService,
         options.outputFormat,
+        options.outputPlatform,
         options.transport,
         options.authMode,
         options.getClientInfo(),

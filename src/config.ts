@@ -10,6 +10,8 @@ export interface Resolved<T> {
   source: Source;
 }
 
+export type OutputPlatform = "compose" | "views";
+
 export interface ServerFlags {
   figmaApiKey?: string;
   figmaOauthToken?: string;
@@ -23,6 +25,7 @@ export interface ServerFlags {
   stdio?: boolean;
   noTelemetry?: boolean;
   designDensity?: string;
+  outputPlatform?: string;
 }
 
 export interface ServerConfig {
@@ -31,6 +34,7 @@ export interface ServerConfig {
   host: string;
   proxy: string | undefined;
   outputFormat: "yaml" | "json";
+  outputPlatform: OutputPlatform;
   skipImageDownloads: boolean;
   imageDir: string;
   isStdioMode: boolean;
@@ -166,6 +170,12 @@ export function getServerConfig(flags: ServerFlags): ServerConfig {
     "auto",
   );
 
+  const outputPlatform = resolve<OutputPlatform>(
+    flags.outputPlatform as OutputPlatform | undefined,
+    envStr("OUTPUT_PLATFORM") as OutputPlatform | undefined,
+    "compose",
+  );
+
   const noTelemetry = flags.noTelemetry ?? false;
   const telemetrySource: Source =
     flags.noTelemetry === true
@@ -185,6 +195,7 @@ export function getServerConfig(flags: ServerFlags): ServerConfig {
     skipImageDownloads: skipImageDownloads.source,
     imageDir: imageDir.source,
     designDensity: designDensity.source,
+    outputPlatform: outputPlatform.source,
     telemetry: telemetrySource,
   };
 
@@ -212,6 +223,7 @@ export function getServerConfig(flags: ServerFlags): ServerConfig {
       `- SKIP_IMAGE_DOWNLOADS: ${skipImageDownloads.value} (source: ${configSources.skipImageDownloads})`,
     );
     console.log(`- IMAGE_DIR: ${imageDir.value} (source: ${configSources.imageDir})`);
+    console.log(`- OUTPUT_PLATFORM: ${outputPlatform.value} (source: ${configSources.outputPlatform})`);
     const telemetryEnabled = resolveTelemetryEnabled(noTelemetry);
     console.log(
       `- TELEMETRY: ${telemetryEnabled ? "enabled" : "disabled"} (source: ${configSources.telemetry})`,
@@ -225,6 +237,7 @@ export function getServerConfig(flags: ServerFlags): ServerConfig {
     host: host.value,
     proxy: proxy.value,
     outputFormat: outputFormat.value,
+    outputPlatform: outputPlatform.value,
     skipImageDownloads: skipImageDownloads.value,
     imageDir: imageDir.value,
     isStdioMode,

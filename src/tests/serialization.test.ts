@@ -66,14 +66,14 @@ describe("result serialization", () => {
       expect(parsed).toEqual(data);
     });
 
-    it("includes screen and composeHints when screen is provided", () => {
+    it("includes screen and layoutHints when screen is provided", () => {
       const data = {
         metadata: { name: "Frame 1" },
         nodes: [],
         globalVars: { styles: {} },
         imageAssets: [],
         screen: { width: "375dp", height: "822dp" },
-        composeHints: [
+        layoutHints: [
           "Screen dimensions: 375dp wide x 822dp tall. Treat this as the baseline design size.",
           "When node width equals 375dp (screen width): Use .fillMaxWidth() instead of .width(375.dp).",
           "When node width does NOT equal 375dp: Use the dp value as-is (e.g., .width(343.dp)).",
@@ -84,25 +84,25 @@ describe("result serialization", () => {
       const parsed = yaml.load(output) as Record<string, unknown>;
 
       expect(parsed.screen).toEqual({ width: "375dp", height: "822dp" });
-      expect(Array.isArray(parsed.composeHints)).toBe(true);
-      expect((parsed.composeHints as string[]).length).toBe(3);
+      expect(Array.isArray(parsed.layoutHints)).toBe(true);
+      expect((parsed.layoutHints as string[]).length).toBe(3);
     });
 
-    it("omits screen and has empty composeHints when screen is undefined", () => {
+    it("omits screen and has empty layoutHints when screen is undefined", () => {
       const data = {
         metadata: { name: "Frame 1" },
         nodes: [],
         globalVars: { styles: {} },
         imageAssets: [],
         screen: undefined,
-        composeHints: [],
+        layoutHints: [],
       };
 
       const output = serializeResult(data, "yaml");
       const parsed = yaml.load(output) as Record<string, unknown>;
 
       expect(parsed.screen).toBeUndefined();
-      expect(parsed.composeHints).toEqual([]);
+      expect(parsed.layoutHints).toEqual([]);
     });
   });
 

@@ -4,6 +4,7 @@ import type { FigmaService } from "~/services/figma.js";
 import type { ImageProcessingResult } from "~/utils/image-processing.js";
 import { ANDROID_DENSITIES, type AndroidDensity } from "~/utils/units.js";
 import { tagError } from "~/utils/error-meta.js";
+import { deduplicateImages } from "~/utils/dedup-images.js";
 import fs from "fs";
 
 /**
@@ -43,6 +44,7 @@ export type DownloadFigmaImagesResult = {
     requestedFileNames: string[];
   }>;
   successCount: Record<string, number>;
+  duplicatesRemoved: number;
 };
 
 export type DownloadImagesOutcome = {
@@ -176,23 +178,25 @@ export async function downloadFigmaImages(
 
     hooks.onDownloadComplete?.();
 
+    // Deduplicate identical images by content hash
+    const dedupResult = deduplicateImages(allResults);
+
     successCount = {};
     let totalSuccess = 0;
-    for (const perItem of allResults) {
+    for (const perItem of dedupResult.results) {
       for (const r of perItem) {
         successCount[r.density] = (successCount[r.density] || 0) + 1;
         totalSuccess++;
       }
     }
-    // Flatten per-density counts for the outcome
     const successForOutcome: Record<string, number> = { ...successCount, total: totalSuccess };
 
-    const downloads = allResults.map((perDensity, index) => ({
+    const downloads = dedupResult.results.map((perDensity, index) => ({
       perDensity,
-      requestedFileNames: downloadToRequests.get(index) ?? [],
+      requestedFileNames: downloadToRequests.get(dedupResult.keptIndices[index]) ?? [],
     }));
 
-    return { downloads, successCount: successForOutcome };
+    return { downloads, successCount: successForOutcome, duplicatesRemoved: dedupResult.duplicateCount };
   } catch (error) {
     caughtError = error;
     throw error;

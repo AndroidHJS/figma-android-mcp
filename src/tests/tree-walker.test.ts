@@ -468,6 +468,88 @@ describe("simplifyRawFigmaObject", () => {
       Title: { type: "text", defaultValue: "Product Name" },
     });
   });
+
+  it("filters imageAssets to only exportSettings when present", async () => {
+    const exportedNode = makeNode({
+      id: "21:1",
+      name: "Export Me",
+      type: "FRAME",
+      exportSettings: [
+        { suffix: "", format: "PNG", constraint: { type: "SCALE", value: 1 } },
+      ],
+    });
+    const vectorNode = makeNode({
+      id: "21:2",
+      name: "Vector Icon",
+      type: "VECTOR",
+    });
+
+    const mockResponse = {
+      name: "Test File",
+      document: {
+        id: "0:0",
+        name: "Document",
+        type: "DOCUMENT",
+        children: [exportedNode, vectorNode],
+        visible: true,
+      },
+      components: {},
+      componentSets: {},
+      styles: {},
+      schemaVersion: 0,
+      version: "1",
+      role: "owner",
+      lastModified: "2024-01-01",
+      thumbnailUrl: "",
+      editorType: "figma",
+    } as unknown as GetFileResponse;
+
+    const result = await simplifyRawFigmaObject(mockResponse, allExtractors);
+
+    expect(result.imageAssets).toHaveLength(1);
+    expect(result.imageAssets[0]).toMatchObject({
+      nodeId: "21:1",
+      reason: "node has exportSettings",
+    });
+  });
+
+  it("keeps all imageAssets when no exportSettings node exists", async () => {
+    const vectorNode = makeNode({
+      id: "22:1",
+      name: "Vector Icon",
+      type: "VECTOR",
+    });
+    const filledFrame = makeNode({
+      id: "22:2",
+      name: "Filled Frame",
+      type: "FRAME",
+      fills: [{ type: "IMAGE", imageRef: "abc", scaleMode: "FILL" }],
+    });
+
+    const mockResponse = {
+      name: "Test File",
+      document: {
+        id: "0:0",
+        name: "Document",
+        type: "DOCUMENT",
+        children: [vectorNode, filledFrame],
+        visible: true,
+      },
+      components: {},
+      componentSets: {},
+      styles: {},
+      schemaVersion: 0,
+      version: "1",
+      role: "owner",
+      lastModified: "2024-01-01",
+      thumbnailUrl: "",
+      editorType: "figma",
+    } as unknown as GetFileResponse;
+
+    const result = await simplifyRawFigmaObject(mockResponse, allExtractors);
+
+    expect(result.imageAssets).toHaveLength(2);
+  });
 });
 
 // ── isSystemUi ──
@@ -672,5 +754,74 @@ describe("exportSettings detection", () => {
     expect(nodes).toHaveLength(1);
     expect(nodes[0].type).toBe("FRAME");
     expect(nodes[0].children).toHaveLength(1);
+  });
+
+  it("prioritizes exportSettings reason over image fills", async () => {
+    const node = makeNode({
+      id: "65:1",
+      name: "Exported With Fills",
+      type: "FRAME",
+      exportSettings: [
+        { suffix: "", format: "PNG", constraint: { type: "SCALE", value: 1 } },
+      ],
+      fills: [{ type: "IMAGE", imageRef: "abc", scaleMode: "FILL" }],
+    });
+
+    const { traversalState } = await extractFromDesign([node], allExtractors);
+
+    expect(traversalState.imageAssets).toHaveLength(1);
+    expect(traversalState.imageAssets[0]).toMatchObject({
+      nodeId: "65:1",
+      reason: "node has exportSettings",
+    });
+  });
+
+  it("includes only exportSettings assets when any node has exportSettings", async () => {
+    const exportedNode = makeNode({
+      id: "66:1",
+      name: "Export Me",
+      type: "FRAME",
+      exportSettings: [
+        { suffix: "", format: "PNG", constraint: { type: "SCALE", value: 1 } },
+      ],
+    });
+    const vectorNode = makeNode({
+      id: "66:2",
+      name: "Vector Icon",
+      type: "VECTOR",
+    });
+
+    const { traversalState } = await extractFromDesign(
+      [exportedNode, vectorNode],
+      allExtractors,
+    );
+
+    // traversalState still has all assets (filtering happens in simplifyRawFigmaObject)
+    const exportAssets = traversalState.imageAssets.filter(
+      (a) => a.reason === "node has exportSettings",
+    );
+    expect(exportAssets).toHaveLength(1);
+    expect(exportAssets[0].nodeId).toBe("66:1");
+  });
+
+  it("keeps all image assets when no node has exportSettings", async () => {
+    const vectorNode = makeNode({
+      id: "67:1",
+      name: "Vector Icon",
+      type: "VECTOR",
+    });
+    const filledFrame = makeNode({
+      id: "67:2",
+      name: "Filled Frame",
+      type: "FRAME",
+      fills: [{ type: "IMAGE", imageRef: "abc", scaleMode: "FILL" }],
+    });
+
+    const { traversalState } = await extractFromDesign(
+      [vectorNode, filledFrame],
+      allExtractors,
+    );
+
+    expect(traversalState.imageAssets).toHaveLength(2);
   });
 });

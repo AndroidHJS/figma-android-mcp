@@ -5,7 +5,7 @@
  * runs simplifyRawFigmaObject against it, printing the SimplifiedDesign as JSON.
  *
  * Usage:
- *   pnpm tsx scripts/test-extractor.ts [path-to-raw-json]
+ *   pnpm tsx src/tests/test-extractor.ts [path-to-raw-json] [--platform views]
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -14,9 +14,15 @@ import {
   simplifyRawFigmaObject,
   allExtractors,
   collapseRasterContainers,
-} from "../src/extractors/index.js";
+} from "../extractors/index.js";
+import { mapLayoutStyles, type Platform } from "../platform-mappers/index.js";
 
-const inputPath = resolve(process.argv[2] || "temp_figma_raw.json");
+const args = process.argv.slice(2);
+const platformIndex = args.indexOf("--platform");
+const platform: Platform = platformIndex !== -1
+  ? (args[platformIndex + 1] as Platform) ?? "compose"
+  : "compose";
+const inputPath = resolve(args.filter((_, i) => i !== platformIndex && i !== platformIndex + 1)[0] || "temp_figma_raw.json");
 
 if (!existsSync(inputPath)) {
   console.error(`File not found: ${inputPath}`);
@@ -39,4 +45,5 @@ const design = await simplifyRawFigmaObject(raw, allExtractors, {
   nodeFilter: (node) => !isSystemUi(node),
 });
 
+mapLayoutStyles(design.globalVars, platform);
 console.log(JSON.stringify(design, null, 2));

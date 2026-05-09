@@ -29,7 +29,18 @@
       "Bash(python3 -c ' *)",
       "Bash(Get-ChildItem -Directory -Name)",
       "Bash(Get-ChildItem -Path \"g:\\\\TestProject\\\\figma-developer-mcp\\\\node_modules\\\\@figma\\\\rest-api-spec\" -Recurse -Filter \"*.ts\")",
-      "PowerShell($lines = Get-Content \"C:\\\\Users\\\\Administrator\\\\.claude\\\\projects\\\\g--TestProject-figma-developer-mcp\\\\f6b5fbac-23ff-4557-a7ea-89711762aede\\\\subagents\\\\agent-a4dfbd669ecedacf8.jsonl\"; foreach \\($line in $lines\\) { if \\($line -match \"exportSettings\"\\) { $line.Substring\\(0, [Math]::Min\\(3000, $line.Length\\)\\); Write-Output \"---END OF LINE---\" } })"
+      "PowerShell($lines = Get-Content \"C:\\\\Users\\\\Administrator\\\\.claude\\\\projects\\\\g--TestProject-figma-developer-mcp\\\\f6b5fbac-23ff-4557-a7ea-89711762aede\\\\subagents\\\\agent-a4dfbd669ecedacf8.jsonl\"; foreach \\($line in $lines\\) { if \\($line -match \"exportSettings\"\\) { $line.Substring\\(0, [Math]::Min\\(3000, $line.Length\\)\\); Write-Output \"---END OF LINE---\" } })",
+      "Bash(Get-ChildItem e:\\\\mcp_project\\\\figma-developer-mcp\\\\dist -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object Name -First 5)",
+      "Bash(npx @modelcontextprotocol/inspector node dist/bin.js --stdio)",
+      "Bash(Start-Sleep 5)",
+      "Bash(Get-Content C:\\\\Users\\\\ADMINI~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\e--mcp-project-figma-developer-mcp\\\\cc5f2d39-9b11-4861-81ea-f6f2646c53ab\\\\tasks\\\\bt24xj5md.output)",
+      "Bash(npx @modelcontextprotocol/inspector --server-port=6278 node dist/bin.js --stdio)",
+      "Bash(taskkill /PID 2320 /F)",
+      "PowerShell(Stop-Process -Id 2320 -Force)",
+      "PowerShell(Stop-Process -Id 10780 -Force)",
+      "PowerShell(Stop-Process -Id 7824,19016 -Force)",
+      "Bash(timeout 5 node dist/bin.js --stdio)"
     ]
   }
 }
