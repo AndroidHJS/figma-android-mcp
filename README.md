@@ -1,69 +1,49 @@
-<a href="https://www.framelink.ai/?utm_source=github&utm_medium=referral&utm_campaign=readme" target="_blank" rel="noopener">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://www.framelink.ai/github/HeaderDark.png" />
-    <img alt="Framelink" src="https://www.framelink.ai/github/HeaderLight.png" />
-  </picture>
-</a>
+# Figma Android MCP
 
-<div align="center">
-  <h1>Framelink MCP for Figma</h1>
-  <h3>Give your coding agent access to your Figma data.<br/>Implement designs in any framework in one-shot.</h3>
-  <a href="https://npmcharts.com/compare/figma-android-mcp?interval=30">
-    <img alt="weekly downloads" src="https://img.shields.io/npm/dm/figma-android-mcp.svg">
-  </a>
-  <a href="https://github.com/GLips/Figma-Context-MCP/blob/main/LICENSE">
-    <img alt="MIT License" src="https://img.shields.io/github/license/GLips/Figma-Context-MCP" />
-  </a>
-  <a href="https://framelink.ai/discord">
-    <img alt="Discord" src="https://img.shields.io/discord/1352337336913887343?color=7389D8&label&logo=discord&logoColor=ffffff" />
-  </a>
-  <br />
-  <a href="https://twitter.com/glipsman">
-    <img alt="Twitter" src="https://img.shields.io/twitter/url?url=https%3A%2F%2Fx.com%2Fglipsman&label=%40glipsman" />
-  </a>
-</div>
+将 Figma 设计数据转换为 Android 原生布局代码的 MCP 服务器。专为 Cursor 等 AI 编码工具设计，让其能直接获取 Figma 设计数据并生成 Jetpack Compose 或传统 View/XML 代码。
 
-<br/>
+基于 [Figma-Context-MCP](https://github.com/GLips/Figma-Context-MCP)，针对 Android 平台做了深度优化。
 
-Give [Cursor](https://cursor.sh/) and other AI-powered coding tools access to your Figma files with this [Model Context Protocol](https://modelcontextprotocol.io/introduction) server.
+## 为什么用它？
 
-When Cursor has access to Figma design data, it's **way** better at one-shotting designs accurately than alternative approaches like pasting screenshots.
+把 Figma 截图贴给 AI 容易产生偏差。将 Figma 设计数据直接喂给 AI 编码工具，设计还原更精准，一次生成更靠谱。
 
-<h3><a href="https://www.framelink.ai/docs/quickstart?utm_source=github&utm_medium=referral&utm_campaign=readme">See quickstart instructions →</a></h3>
+## 特性
 
-## Demo
+- **双平台输出** — 支持 Jetpack Compose（默认）和传统 View/XML 两种输出模式
+- **智能布局推断** — 自动从 Figma 节点坐标推断 `Column`/`Row` 布局
+- **响应式尺寸** — 屏幕宽度/高度的节点自动转为 `fillMaxWidth()`/`fillMaxHeight()` 或 `match_parent`
+- **Android 专属提示** — 输出附带 FrameLayout、ConstraintLayout 使用规则等 Android 布局最佳实践
+- **图片下载** — 通过 `download_figma_images` 工具下载所需的图片资源
+- **尺寸单位** — 布局使用 dp，字体使用 sp，颜色使用 hex/rgba
 
-[Watch a demo of building a UI in Cursor with Figma design data](https://youtu.be/6G9yb-LrEqg)
+## 快速开始
 
-[![Watch the video](https://img.youtube.com/vi/6G9yb-LrEqg/maxresdefault.jpg)](https://youtu.be/6G9yb-LrEqg)
-
-## How it works
-
-1. Open your IDE's chat (e.g. agent mode in Cursor).
-2. Paste a link to a Figma file, frame, or group.
-3. Ask Cursor to do something with the Figma file—e.g. implement the design.
-4. Cursor will fetch the relevant metadata from Figma and use it to write your code.
-
-This MCP server is specifically designed for use with Cursor. Before responding with context from the [Figma API](https://www.figma.com/developers/api), it simplifies and translates the response so only the most relevant layout and styling information is provided to the model.
-
-Reducing the amount of context provided to the model helps make the AI more accurate and the responses more relevant.
-
-## Getting Started
-
-Many code editors and other AI clients use a configuration file to manage MCP servers.
-
-The `figma-android-mcp` server can be configured by adding the following to your configuration file.
-
-> NOTE: You will need to create a Figma access token to use this server. Instructions on how to create a Figma API access token can be found [here](https://help.figma.com/hc/en-us/articles/8085703771159-Manage-personal-access-tokens).
+需要先创建 Figma API Token：[创建教程](https://help.figma.com/hc/en-us/articles/8085703771159-Manage-personal-access-tokens)
 
 ### MacOS / Linux
+
+**Compose 项目：**
 
 ```json
 {
   "mcpServers": {
-    "Framelink MCP for Figma": {
+    "Figma Android MCP": {
       "command": "npx",
-      "args": ["-y", "figma-android-mcp", "--figma-api-key=YOUR-KEY", "--stdio"]
+      "args": ["-y", "figma-android-mcp", "--figma-api-key=你的KEY", "--output-platform=compose", "--stdio"]
+    }
+  }
+}
+```
+
+**View/XML 项目：**
+
+```json
+{
+  "mcpServers": {
+    "Figma Android MCP": {
+      "command": "npx",
+      "args": ["-y", "figma-android-mcp", "--figma-api-key=你的KEY", "--output-platform=views", "--stdio"]
     }
   }
 }
@@ -71,62 +51,72 @@ The `figma-android-mcp` server can be configured by adding the following to your
 
 ### Windows
 
+**Compose 项目：**
+
 ```json
 {
   "mcpServers": {
-    "Framelink MCP for Figma": {
+    "Figma Android MCP": {
       "command": "cmd",
-      "args": ["/c", "npx", "-y", "figma-android-mcp", "--figma-api-key=YOUR-KEY", "--stdio"]
+      "args": ["/c", "npx", "-y", "figma-android-mcp", "--figma-api-key=你的KEY", "--output-platform=compose", "--stdio"]
     }
   }
 }
 ```
 
-Or you can set `FIGMA_API_KEY` and `PORT` in the `env` field.
-
-### Android Output Platform
-
-This fork outputs Android-native layout terminology. Pick the platform that matches your project with `--output-platform`:
-
-- `compose` (default) — Jetpack Compose. Layout fields use `arrangement`, `alignment`, `spacing`, `width`, `height`.
-- `views` — Traditional Android View / XML system. Layout fields use `orientation`, `gravity`, `layout_width`, `layout_height`.
-
-You can also set the env var `OUTPUT_PLATFORM=compose|views`.
-
-**Compose project (MacOS / Linux):**
+**View/XML 项目：**
 
 ```json
 {
   "mcpServers": {
     "Figma Android MCP": {
-      "command": "npx",
-      "args": ["-y", "figma-android-mcp", "--figma-api-key=YOUR-KEY", "--output-platform=compose", "--stdio"]
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "figma-android-mcp", "--figma-api-key=你的KEY", "--output-platform=views", "--stdio"]
     }
   }
 }
 ```
 
-**View / XML project (MacOS / Linux):**
+也可以通过 `FIGMA_API_KEY`、`OUTPUT_PLATFORM` 等环境变量配置，放在 `.env` 文件中或 MCP 的 `env` 字段里。
 
-```json
-{
-  "mcpServers": {
-    "Figma Android MCP": {
-      "command": "npx",
-      "args": ["-y", "figma-android-mcp", "--figma-api-key=YOUR-KEY", "--output-platform=views", "--stdio"]
-    }
-  }
-}
-```
+## 配置参数
 
-On Windows, prefix with `cmd /c` like the Windows example above.
+| 参数 | 环境变量 | 说明 | 默认值 |
+|------|---------|------|--------|
+| `--figma-api-key` | `FIGMA_API_KEY` | Figma Personal Access Token | - |
+| `--figma-oauth-token` | `FIGMA_OAUTH_TOKEN` | Figma OAuth Bearer Token | - |
+| `--output-platform` | `OUTPUT_PLATFORM` | 输出平台：`compose` 或 `views` | `compose` |
+| `--json` | `OUTPUT_FORMAT=json` | 输出 JSON 格式（默认 YAML） | - |
+| `--port` | `PORT` | HTTP 服务端口 | `3333` |
+| `--stdio` | - | stdio 传输模式（MCP 客户端使用） | - |
+| `--skip-image-downloads` | `SKIP_IMAGE_DOWNLOADS=true` | 禁用图片下载工具 | `false` |
+| `--no-telemetry` | `FRAMELINK_TELEMETRY=false` | 关闭遥测 | `false` |
 
-If you need more information on how to configure the Framelink MCP for Figma, see the [Framelink docs](https://www.framelink.ai/docs/quickstart?utm_source=github&utm_medium=referral&utm_campaign=readme).
+## MCP 工具
 
-## Star History
+### `get_figma_data`
 
-<a href="https://star-history.com/#GLips/Figma-Context-MCP"><img src="https://api.star-history.com/svg?repos=GLips/Figma-Context-MCP&type=Date" alt="Star History Chart" width="600" /></a>
+获取 Figma 文件或节点的设计数据，返回精简后的布局信息。输出包含：
+- `nodes` — 节点树，含布局和样式信息
+- `globalVars` — 共享样式变量
+- `imageAssets` — 需要下载的图片节点列表
+- `screen` — 设计画布尺寸
+- `layoutHints` — Android 布局最佳实践提示
 
-## Learn More
+### `download_figma_images`
 
-The Framelink MCP for Figma is simple but powerful. Get the most out of it by learning more at the [Framelink](https://framelink.ai?utm_source=github&utm_medium=referral&utm_campaign=readme) site.
+根据 `get_figma_data` 返回的 `imageAssets` 列表，下载对应的 PNG 图片。
+
+## 输出平台差异
+
+### Compose (`--output-platform=compose`)
+
+布局字段使用 Compose 术语：`arrangement`、`alignment`、`spacing`、`width`、`height`。自动推断 `Column`/`Row`，满屏节点转为 `fillMaxSize()` 等。
+
+### Views (`--output-platform=views`)
+
+布局字段使用 View/XML 术语：`orientation`、`gravity`、`layout_width`、`layout_height`。输出附带 Android View 系统的布局提示（FrameLayout 使用规则、ConstraintLayout 适用场景、elevation 替代方案等）。
+
+## License
+
+MIT
