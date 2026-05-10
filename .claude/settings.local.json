@@ -56,7 +56,10 @@
       "Bash(node -e \"require\\('child_process'\\).spawn\\('npx.cmd', ['--version'], {stdio:'inherit'}\\)\")",
       "Bash(node -e \"const path = require\\('path'\\); console.log\\(path.resolve\\('e:/mcp_project/figma-android-mcp/node_modules/tsx/dist/cli.mjs'\\)\\)\")",
       "Bash(npm pack *)",
-      "Bash(pnpm install *)"
+      "Bash(pnpm install *)",
+      "Bash(Get-ChildItem -Recurse -File e:\\\\mcp_project\\\\figma-android-mcp -Exclude node_modules)",
+      "Bash(Sort-Object)",
+      "PowerShell(Get-ChildItem -Recurse -File e:\\\\mcp_project\\\\figma-android-mcp -Exclude node_modules | ForEach-Object { $_.FullName.Substring\\(29\\) } | Sort-Object)"
     ]
   }
 }

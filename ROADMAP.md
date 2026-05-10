@@ -1,125 +1,147 @@
-# Figma MCP Server Roadmap
+# figma-android-mcp 路线图
 
-This roadmap outlines planned improvements and features for the Figma MCP Server project. Items are organized by development phases and effort levels.
+## 项目定位
 
-## Overview
-
-The Figma MCP Server enables AI coding assistants to access Figma design data directly, improving the accuracy of design-to-code translations. This roadmap focuses on expanding capabilities, improving developer experience, and ensuring robust enterprise support.
-
-## Core Feature Enhancements 🚀
-
-_High impact, foundational improvements_
-
-### Component & Prototype Support (High Priority)
-
-- [ ] **Add dedicated tool for component extraction** ([#124](https://github.com/GLips/Figma-Context-MCP/issues/124))
-  - [ ] Create `get_figma_components` tool for fetching full component/component set design data including variants and properties
-- [ ] **Improve INSTANCE support**
-  - [ ] Return only overridden values
-  - [ ] Hide children of INSTANCE except for slot type children or if full data is explicitly requested via new tool call parameter
-- [ ] **Prototype support**
-  - [ ] Extract interactivity data (e.g. actions on hover, click, etc.)
-  - [ ] Return data on animations / transitions
-  - [?] State management hints
-
-### Parsing Logic
-
-- [ ] Inline variables that only show up once, and keep global vars only for variables that are reused
-
-### Image & Asset Handling
-
-- [ ] **Fix masked / cropped image exports**
-  - [ ] Correctly export cropped images ([#162](https://github.com/GLips/Figma-Context-MCP/issues/162))
-  - [?] Support complex mask shapes and transformations
-  - [?] Pull image fills/vectors out to top level for better AI visibility
-- [ ] **Improve SVG handling**
-  - [ ] Better icon identification, e.g. if all components of a frame are VECTOR, download the full frame as an SVG
-  - [?] Add support for raw path data in response—not sure if this is valuable yet
-
-### Layout Improvements
-
-- [ ] **Smart wrapped layout detection**
-  - [?] Detect and convert fixed-width children to percentage-based widths
-  - [ ] Better flexbox wrap support
-  - [ ] Grid layout detection for wrapped items
-  - [ ] Support for Figma's new grid layout
-
-### Advanced Styling
-
-- [ ] **Enhanced gradient support**
-  - [ ] Make sure gradients are exported correctly in CSS syntax ([#152](https://github.com/GLips/Figma-Context-MCP/issues/152))
-- [ ] **Grid system support**
-  - [ ] Support for Figma's new grid autolayout (an addition to the long-existing flex autolayout)
-  - [ ] Legacy "layout guide" grids
-- [ ] **Named styles extraction**
-  - [ ] Export style names associated with different layouts, colors, text, etc. for easier identification by the LLM (can use `/v1/styles/:key` endpoint)
-
-### Text & Typography
-
-- [ ] **Text styling**
-  - [ ] Add support for formatted text in text fields ([#159](https://github.com/GLips/Figma-Context-MCP/issues/159))
-  - [ ] Add support for mixed text styles (e.g. multiple colors) ([#140](https://github.com/GLips/Figma-Context-MCP/issues/140))
-
-## Enterprise & Advanced Features 🏢
-
-_Features for scaling and enterprise adoption_
-
-### Enterprise Support
-
-- [ ] **Variable System Enhancements**
-  - [ ] Port `deduceVariablesFromTokens` for non-Enterprise users (see [tothienbao6a0's fork](https://github.com/tothienbao6a0/Figma-Context-MCP/blob/d9b035de76f44c952382b8155a5d5bf938e52a77/src/services/variable-deduction.ts#L30) for inspiration?)
-  - [ ] Add `getFigmaVariables` for Enterprise plans
-  - [?] Export design tokens in standard formats
-
-## Developer Experience 🛠️
-
-_Improving usability and integration_
-
-### Performance & Reliability
-
-- [ ] **Better error handling**
-  - [x] Retry logic for API failures
-  - [ ] Detailed error messages which the LLM can expand on for users
-
-### Documentation & Testing
-
-- [ ] **Test coverage improvements**
-  - [ ] Unit tests for all transformers
-  - [ ] Integration tests with mock Figma API
-  - [ ] E2E tests to visually check the implementation of an LLM coding agent prompted with MCP server output—likely uses a custom test framework to kick off e.g. Claude Code in the background
-
-## Quick Wins 🎪
-
-_Low effort, high impact_
-
-- [ ] Better handling of text overflow (e.g. auto width, auto height, fixed width + truncate text setting)
-- [ ] Double check to make sure blend modes are forwarded properly in the simplified response
-
-## Technical Debt 🧹
-
-_Code quality and maintenance_
-
-- [ ] Clean up image download code (noted in mcp.ts)
-- [ ] Refactor `convertAlign` function (layout.ts)
-- [ ] Standardize error handling across services
-
-## Research & Exploration 🔬
-
-_Investigate feasibility / value_
-
-- [ ] Figma plugin companion 🚀🚀🚀
-- [ ] **Design System Integration**
-  - [ ] Token extraction and mapping
-  - [ ] Component dependency graphs
-- [ ] **Figma File Metadata**
-  - [ ] Investigate how we can use frames that are marked "Ready for Dev"
-  - [ ] Investigate feasibility of pulling in annotations via the Figma API
-  - [ ] Investigate feasibility/value of using—and even modifying—"Dev Resources" links via Figma API
-
-## Contributing
-
-We welcome contributions! Please check the issues labeled with "good first issue" or "help wanted". For major features, please open an issue first to discuss the implementation approach.
+`figma-android-mcp` 是从 [Figma-Context-MCP](https://github.com/GLips/Figma-Context-MCP) fork 的 Android 特化版本。核心差异是输出 Android 原生布局术语（Jetpack Compose 和 XML Views），并支持按 Android density bucket（mipmap-xhdpi / mipmap-xxhdpi 等）下载图片资源。
 
 ---
 
-_This roadmap is subject to change based on community feedback and priorities. Last updated: June 2025_
+## 已完成的特性 ✅
+
+### Android 平台输出
+
+- [x] `--output-platform compose` — 输出 Compose 布局字段（`arrangement`, `alignment`, `spacing`, `width`, `height`）
+- [x] `--output-platform views` — 输出传统 Views 布局字段（`orientation`, `gravity`, `layout_width`, `layout_height`）
+- [x] `--design-density` — 设计稿密度配置，控制 dp/sp 单位转换（auto / mdpi / xhdpi / xxhdpi）
+
+### 图片处理
+
+- [x] 多 density bucket 下载（`mipmap-{density}/` 子目录）
+- [x] 图片内容哈希去重
+- [x] 裁剪变换（cropTransform）处理
+- [x] GIF 导出支持
+- [x] 图片填充下载
+- [x] `localPath` 路径安全校验
+
+### 布局处理
+
+- [x] 自动布局推断（`inferAutoLayoutFromPositions`）— 从绝对定位子节点推断 flex 排列
+- [x] 布局提示生成（`layoutHints`）— 推荐 `fillMaxWidth()`、`fillMaxSize()` 等
+- [x] 固定尺寸转 fillMax 转换（`convertFixedChildrenToFillMax`）— 居中固定宽度子元素转响应式
+
+### 样式 & 文本
+
+- [x] 富文本渲染（混合格式化：粗体、斜体、删除线、链接、颜色覆盖）
+- [x] CSS 渐变（线性、径向、角度、菱形）
+- [x] 阴影效果（drop shadow、inner shadow → box-shadow / text-shadow）
+- [x] 模糊效果（layer blur、background blur）
+- [x] 边框样式（颜色、宽度、虚线）
+
+### 组件
+
+- [x] 组件属性提取（INSTANCE / COMPONENT / COMPONENT_SET）
+- [x] VARIANT 类型节点及其选项列表
+- [x] 组件属性引用（property references）
+
+### 基础设施
+
+- [x] stdio 和 StreamableHTTP 双传输模式
+- [x] HTTP 代理支持（`--proxy`）
+- [x] 结构化错误消息（403 / 429 含 LLM 可用的排查指引）
+- [x] PostHog 遥测（含密钥脱敏）
+- [x] 请求级认证（`X-Figma-Token` HTTP header）
+- [x] `fetch` 子命令 — 直接输出简化数据到 stdout
+
+---
+
+## 待开发 📋
+
+### 组件 & 实例（高优先级）
+
+- [ ] **实例覆盖值** — INSTANCE 节点只返回被覆盖的属性，隐藏未被覆盖的子节点
+- [ ] **Slot 子节点** — 正确处理 INSTANCE 中的 slot 类型子节点
+- [ ] **组件提取专用工具** — `get_figma_components` 工具，获取完整组件/组件集的设计数据
+
+### 布局
+
+- [ ] **Figma Grid 布局** — 支持 Figma 新的 grid 自动布局（flex 已有，grid 尚未支持）
+- [ ] **Flexbox wrap 检测** — 自动检测换行并转换为合适的布局模式
+- [ ] **文本溢出处理** — auto width / auto height / fixed width + truncate 的映射
+
+### 样式
+
+- [ ] **命名样式提取** — 通过 `/v1/styles/:key` 端点导出 Figma 命名样式名称
+- [ ] **混合文本样式** — 单节点内多个 text style override 的完整支持
+- [ ] **渐变 CSS 语法校验** — 确认所有渐变类型输出正确的 CSS 语法
+
+### 图片 & 资源
+
+- [ ] **复杂遮罩导出** — 复杂 mask 形状和变换的正确处理
+- [ ] **SVG 图标识别** — Frame 内全为 VECTOR 时，下载整帧为 SVG
+- [ ] **图片填充/矢量提升** — 将深层图片填充和矢量提升到 top level
+
+### 变量 & Token
+
+- [ ] **非企业版变量推断** — 将 variable deduction 移植给非 Enterprise 用户
+- [ ] **设计 Token 导出** — 以标准格式导出设计 token
+
+### 原型 & 交互
+
+- [ ] **交互数据提取** — hover / click 等操作
+- [ ] **动画 / 过渡数据**
+
+---
+
+## 技术债务 🧹
+
+- [ ] 图片下载代码清理（`mcp.ts` 中标注的部分）
+- [ ] `convertAlign` 函数重构（`layout.ts`）
+- [ ] 各 service 的错误处理统一
+
+---
+
+## 测试 📊
+
+### 当前覆盖
+
+| 模块 | 测试文件 | 用例数 |
+|------|---------|--------|
+| 平台映射 (Compose / Views) | `platform-mapper.test.ts` | 66 |
+| 富文本 | `rich-text.test.ts` | 40 |
+| Tree Walker | `tree-walker.test.ts` | 34 |
+| 布局对齐 | `layout-alignment.test.ts` | 32 |
+| 路径校验 | `path-validation.test.ts` | 25 |
+| Fill-max 转换 | `layout-fillmax.test.ts` | 18 |
+| 布局推断 | `layout-inference.test.ts` | 15 |
+| 配置 | `config.test.ts` | 14 |
+| 序列化 | `serialization.test.ts` | 8 |
+| 错误元数据 | `error-meta.test.ts` | 4 |
+| 图片处理 | `image-processing.test.ts` | 4 |
+| HTTP Header 认证 | `http-header-auth.test.ts` | 3 |
+| 校验拒绝捕获 | `validation-reject.test.ts` | 3 |
+| 服务端集成 | `server.test.ts` | 11 |
+| stdio 传输 | `stdio.test.ts` | 2 |
+| 遥测脱敏 | `telemetry-redaction.test.ts` | 1 |
+| 性能基准 | `benchmark.test.ts` | 1 |
+| 集成测试 | `integration.test.ts` | 1 (跳过) |
+
+### 待补充
+
+- [ ] 集成测试：用 Mock Figma API 替代真实 API 调用
+- [ ] E2E 测试：通过 MCP Server 输出验证 LLM 编码助手的实现效果
+- [ ] transformer 层单元测试（当前通过上层测试间接覆盖）
+
+---
+
+## 不纳入范围
+
+以下内容明确不在此项目范围（来自上游 CONTRIBUTING.md 的哲学）：
+
+- 图片编辑 / 处理（仅做裁剪和格式转换，不做滤镜、压缩等操作）
+- CMS 同步
+- 代码生成（项目只输出简化的设计数据，代码生成由 AI agent 完成）
+- 第三方平台集成
+
+---
+
+*路线图会随实际开发进度持续更新。最后更新：2026 年 5 月*
