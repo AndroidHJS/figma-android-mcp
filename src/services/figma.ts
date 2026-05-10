@@ -260,4 +260,30 @@ export class FigmaService {
 
     return result;
   }
+
+  /**
+   * 将 Figma 节点渲染为 PNG 并以 base64 返回，用于在 YAML 设计数据旁提供视觉参考。
+   * 任何失败均返回 null，调用方可优雅降级。
+   */
+  async getNodePreviewImage(
+    fileKey: string,
+    nodeId: string,
+  ): Promise<{ base64: string; mimeType: "image/png" } | null> {
+    try {
+      const normalizedId = nodeId.replace(/-/g, ":");
+      const endpoint = `/images/${fileKey}?ids=${normalizedId}&format=png&scale=2`;
+      const response = await this.request<GetImagesResponse>(endpoint);
+      const validImages = this.filterValidImages(response.images);
+      const imageUrl = validImages[normalizedId];
+      if (!imageUrl) return null;
+
+      const imageResponse = await fetch(imageUrl);
+      if (!imageResponse.ok) return null;
+
+      const arrayBuffer = await imageResponse.arrayBuffer();
+      return { base64: Buffer.from(arrayBuffer).toString("base64"), mimeType: "image/png" };
+    } catch {
+      return null;
+    }
+  }
 }

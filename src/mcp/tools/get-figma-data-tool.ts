@@ -93,9 +93,22 @@ async function getFigmaData(
     Logger.log(`Successfully extracted data: ${result.metrics.simplifiedNodeCount} nodes`);
     Logger.log("Sending result to client");
 
-    return {
-      content: [{ type: "text" as const, text: result.formatted }],
-    };
+    const content: Array<
+      { type: "text"; text: string } | { type: "image"; mimeType: string; data: string }
+    > = [{ type: "text" as const, text: result.formatted }];
+
+    if (nodeId) {
+      const preview = await figmaService.getNodePreviewImage(fileKey, nodeId);
+      if (preview) {
+        content.push({ type: "image" as const, mimeType: preview.mimeType, data: preview.base64 });
+        content.push({
+          type: "text" as const,
+          text: "上方图片是该 Figma 设计节点的截图，请对照截图校验生成代码的还原度——重点检查布局、间距、颜色、字体及组件形态。",
+        });
+      }
+    }
+
+    return { content };
   } catch (error) {
     const message = error instanceof Error ? error.message : JSON.stringify(error);
     Logger.error(`Error fetching file ${params.fileKey}:`, message);
