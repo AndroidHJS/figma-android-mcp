@@ -48,5 +48,5 @@ Thumbs.db
 # Local experiment scratchpad
 /trials/
 
-# Claude local settings (contains secrets)
-.claude/settings.local.json
+# Claude local config and settings (may contain secrets)
+.claude
