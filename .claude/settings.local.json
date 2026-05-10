@@ -59,7 +59,21 @@
       "Bash(pnpm install *)",
       "Bash(Get-ChildItem -Recurse -File e:\\\\mcp_project\\\\figma-android-mcp -Exclude node_modules)",
       "Bash(Sort-Object)",
-      "PowerShell(Get-ChildItem -Recurse -File e:\\\\mcp_project\\\\figma-android-mcp -Exclude node_modules | ForEach-Object { $_.FullName.Substring\\(29\\) } | Sort-Object)"
+      "PowerShell(Get-ChildItem -Recurse -File e:\\\\mcp_project\\\\figma-android-mcp -Exclude node_modules | ForEach-Object { $_.FullName.Substring\\(29\\) } | Sort-Object)",
+      "Bash(Get-ChildItem -Path dist -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object -First 10 Name)",
+      "PowerShell(npm whoami 2>&1)",
+      "PowerShell(pnpm build 2>&1)",
+      "PowerShell(npm search figma-android-mcp 2>&1)",
+      "PowerShell(npm login 2>&1)",
+      "PowerShell(npm whoami)",
+      "PowerShell(npm login)",
+      "PowerShell(npm publish)",
+      "Bash(Get-ChildItem -Path \"E:/mcp_project/figma-android-mcp/src\" -Recurse -Name)",
+      "PowerShell(node \"E:/mcp_project/figma-android-mcp/dist/bin.js\" --help 2>&1)",
+      "PowerShell(node \"E:/mcp_project/figma-android-mcp/dist/bin.js\" fetch \"https://www.figma.com/design/SUdTgwSabj8m9d1qKv8mOg/WWMB?node-id=85-46\" --output-platform views)",
+      "PowerShell(pnpm run build 2>&1)",
+      "PowerShell(pnpm run type-check 2>&1)"
     ]
   }
 }

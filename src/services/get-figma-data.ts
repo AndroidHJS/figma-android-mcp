@@ -38,6 +38,10 @@ function generateLayoutHints(screen: { width: string; height: string }, platform
       `When node height does NOT equal ${h}: Use the dp value as-is.`,
       `When both equal screen dimensions: Use layout_width="match_parent" layout_height="match_parent".`,
       `For content centered in a parent and narrower than the parent: Use layout_gravity="center" layout_width="match_parent" with paddingLeft/paddingRight instead of layout_width="Wdp" + layout_gravity="center", where padding = (parentWidth - childWidth) / 2.`,
+      `Parent container: Use FrameLayout as the root container. Child views are positioned via layout_marginStart/layout_marginTop.`,
+      `CRITICAL — ConstraintLayout usage: ONLY add app:layout_constraint* attributes when the node's layout data explicitly contains layout_constraintHorizontal or layout_constraintVertical. If these keys are absent from the layout, place the View in a FrameLayout using ONLY layout_width, layout_height, layout_marginStart, and layout_marginTop — never add ConstraintLayout attributes to such nodes.`,
+      `Centering without ConstraintLayout: When a node has layout_constraintHorizontal: "center" but no other constraint keys, use android:layout_gravity="center_horizontal" inside a FrameLayout instead of ConstraintLayout.`,
+      `Effects — NEVER use android:elevation: boxShadow values use CSS box-shadow syntax (offsetX offsetY blur spread color). They MUST be implemented as Android drawable resources (<layer-list> with <shape> for the shadow layer), not as android:elevation. Specifically: a negative Y offset (e.g., 0dp -3dp ...) means the shadow casts UPWARD — elevation cannot express this. If you are unsure how to convert a boxShadow to a drawable, skip the shadow entirely rather than using elevation.`,
     ];
   }
 
