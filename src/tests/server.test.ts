@@ -185,8 +185,9 @@ describe("Process-level HTTP startup", () => {
   /** Spawn bin.ts and resolve once the server logs that it's listening. */
   function spawnAndWaitForReady(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      child = spawn("tsx", ["src/bin.ts", `--figma-api-key=test-key`, `--port=${TEST_PORT}`], {
+      child = spawn(`npx --yes tsx src/bin.ts --figma-api-key=test-key --port=${TEST_PORT}`, {
         stdio: ["pipe", "pipe", "pipe"],
+        shell: true,
       });
 
       const timeout = setTimeout(() => {

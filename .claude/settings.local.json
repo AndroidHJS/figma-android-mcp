@@ -50,7 +50,11 @@
       "Bash(node dist/bin.js fetch \"https://www.figma.com/design/SUdTgwSabj8m9d1qKv8mOg/WWMB?node-id=85-46\" --json --depth=10)",
       "Bash(Get-ChildItem -Path \"e:\\\\mcp_project\\\\figma-developer-mcp\\\\src\" -Recurse -Name)",
       "Bash(Get-ChildItem -Recurse -Name src/tests/)",
-      "Bash(Select-Object)"
+      "Bash(Select-Object)",
+      "Bash(where npx *)",
+      "Bash(where npx.cmd)",
+      "Bash(node -e \"require\\('child_process'\\).spawn\\('npx.cmd', ['--version'], {stdio:'inherit'}\\)\")",
+      "Bash(node -e \"const path = require\\('path'\\); console.log\\(path.resolve\\('e:/mcp_project/figma-developer-mcp/node_modules/tsx/dist/cli.mjs'\\)\\)\")"
     ]
   }
 }
