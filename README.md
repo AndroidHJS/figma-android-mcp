@@ -8,8 +8,8 @@
 <div align="center">
   <h1>Framelink MCP for Figma</h1>
   <h3>Give your coding agent access to your Figma data.<br/>Implement designs in any framework in one-shot.</h3>
-  <a href="https://npmcharts.com/compare/figma-developer-mcp?interval=30">
-    <img alt="weekly downloads" src="https://img.shields.io/npm/dm/figma-developer-mcp.svg">
+  <a href="https://npmcharts.com/compare/figma-android-mcp?interval=30">
+    <img alt="weekly downloads" src="https://img.shields.io/npm/dm/figma-android-mcp.svg">
   </a>
   <a href="https://github.com/GLips/Figma-Context-MCP/blob/main/LICENSE">
     <img alt="MIT License" src="https://img.shields.io/github/license/GLips/Figma-Context-MCP" />
@@ -52,7 +52,7 @@ Reducing the amount of context provided to the model helps make the AI more accu
 
 Many code editors and other AI clients use a configuration file to manage MCP servers.
 
-The `figma-developer-mcp` server can be configured by adding the following to your configuration file.
+The `figma-android-mcp` server can be configured by adding the following to your configuration file.
 
 > NOTE: You will need to create a Figma access token to use this server. Instructions on how to create a Figma API access token can be found [here](https://help.figma.com/hc/en-us/articles/8085703771159-Manage-personal-access-tokens).
 
@@ -63,7 +63,7 @@ The `figma-developer-mcp` server can be configured by adding the following to yo
   "mcpServers": {
     "Framelink MCP for Figma": {
       "command": "npx",
-      "args": ["-y", "figma-developer-mcp", "--figma-api-key=YOUR-KEY", "--stdio"]
+      "args": ["-y", "figma-android-mcp", "--figma-api-key=YOUR-KEY", "--stdio"]
     }
   }
 }
@@ -76,13 +76,50 @@ The `figma-developer-mcp` server can be configured by adding the following to yo
   "mcpServers": {
     "Framelink MCP for Figma": {
       "command": "cmd",
-      "args": ["/c", "npx", "-y", "figma-developer-mcp", "--figma-api-key=YOUR-KEY", "--stdio"]
+      "args": ["/c", "npx", "-y", "figma-android-mcp", "--figma-api-key=YOUR-KEY", "--stdio"]
     }
   }
 }
 ```
 
 Or you can set `FIGMA_API_KEY` and `PORT` in the `env` field.
+
+### Android Output Platform
+
+This fork outputs Android-native layout terminology. Pick the platform that matches your project with `--output-platform`:
+
+- `compose` (default) — Jetpack Compose. Layout fields use `arrangement`, `alignment`, `spacing`, `width`, `height`.
+- `views` — Traditional Android View / XML system. Layout fields use `orientation`, `gravity`, `layout_width`, `layout_height`.
+
+You can also set the env var `OUTPUT_PLATFORM=compose|views`.
+
+**Compose project (MacOS / Linux):**
+
+```json
+{
+  "mcpServers": {
+    "Figma Android MCP": {
+      "command": "npx",
+      "args": ["-y", "figma-android-mcp", "--figma-api-key=YOUR-KEY", "--output-platform=compose", "--stdio"]
+    }
+  }
+}
+```
+
+**View / XML project (MacOS / Linux):**
+
+```json
+{
+  "mcpServers": {
+    "Figma Android MCP": {
+      "command": "npx",
+      "args": ["-y", "figma-android-mcp", "--figma-api-key=YOUR-KEY", "--output-platform=views", "--stdio"]
+    }
+  }
+}
+```
+
+On Windows, prefix with `cmd /c` like the Windows example above.
 
 If you need more information on how to configure the Framelink MCP for Figma, see the [Framelink docs](https://www.framelink.ai/docs/quickstart?utm_source=github&utm_medium=referral&utm_campaign=readme).
 

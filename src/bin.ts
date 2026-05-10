@@ -6,7 +6,7 @@ import { startServer } from "./server.js";
 import { fetchCommand } from "./commands/fetch.js";
 
 const argv = cli({
-  name: "figma-developer-mcp",
+  name: "figma-android-mcp",
   version: process.env.NPM_PACKAGE_VERSION ?? "unknown",
   flags: {
     figmaApiKey: {
