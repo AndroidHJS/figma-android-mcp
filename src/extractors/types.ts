@@ -47,6 +47,12 @@ export type NodeCounter = { count: number };
 export interface ImageAsset {
   nodeId: string;
   name: string;
+  /**
+   * Coarse grouping that callers can act on without parsing the free-form `reason`.
+   * `export-tagged` = designer-marked Export Settings (must ship as an asset).
+   * `auto-detected` = vectors / image fills the walker inferred could be PNGs.
+   */
+  category: "export-tagged" | "auto-detected";
   reason: "IMAGE-PNG node" | "contains image fills" | "node has exportSettings";
   suggestedFileName: string;
 }

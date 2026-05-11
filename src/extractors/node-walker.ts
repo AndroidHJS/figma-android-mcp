@@ -138,15 +138,19 @@ async function processNodeWithExtractors(
       (a) => a.nodeId === node.id,
     );
     if (existingIdx === -1) {
+      const isExportTagged = hasExportSettings(node);
       context.traversalState.imageAssets.push({
         nodeId: node.id,
         name: node.name,
-        reason: hasExportSettings(node) ? "node has exportSettings" : "IMAGE-PNG node",
+        category: isExportTagged ? "export-tagged" : "auto-detected",
+        reason: isExportTagged ? "node has exportSettings" : "IMAGE-PNG node",
         suggestedFileName: toImageFileName(node.name),
       });
     } else if (hasExportSettings(node)) {
       // visualsExtractor may have already added this node with "contains image fills";
-      // exportSettings is the designer's explicit signal and takes priority.
+      // exportSettings is the designer's explicit signal and takes priority for both
+      // the human-readable reason and the machine-readable category.
+      context.traversalState.imageAssets[existingIdx].category = "export-tagged";
       context.traversalState.imageAssets[existingIdx].reason =
         "node has exportSettings";
     }

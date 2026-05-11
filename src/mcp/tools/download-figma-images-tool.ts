@@ -73,9 +73,21 @@ const parameters = {
         .describe(
           "Suffix to add to filename for unique images, provided in the Figma data",
         ),
+      category: z
+        .enum(["export-tagged", "auto-detected"])
+        .optional()
+        .describe(
+          "Mirrors the `category` field from get_figma_data's imageAssets. Pass it through unchanged. When the top-level onlyExportTagged is true, nodes without category === 'export-tagged' are skipped.",
+        ),
     })
     .array()
     .describe("The nodes to fetch as images"),
+  onlyExportTagged: z
+    .boolean()
+    .optional()
+    .describe(
+      "If true, only download nodes whose `category` is 'export-tagged'. Use this when the caller wants to defer auto-detected assets (vectors / image fills) to code generation rather than shipping them as PNG resources.",
+    ),
   densities: z
     .array(z.enum(DENSITY_KEYS as [string, ...string[]]))
     .default(["xhdpi", "xxhdpi"])
@@ -102,7 +114,27 @@ async function downloadFigmaImages(
   extra: ToolExtra,
 ) {
   try {
-    const { fileKey, nodes, localPath, densities } = parametersSchema.parse(params);
+    const { fileKey, nodes, localPath, densities, onlyExportTagged } =
+      parametersSchema.parse(params);
+
+    // When the caller wants to defer auto-detected assets to code generation,
+    // strip them here before resolving paths or hitting the Figma API.
+    const filteredNodes = onlyExportTagged
+      ? nodes.filter((n) => n.category === "export-tagged")
+      : nodes;
+
+    if (onlyExportTagged && filteredNodes.length === 0) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text:
+              "No export-tagged nodes to download. The caller passed onlyExportTagged=true but none of the supplied nodes had category === 'export-tagged'. " +
+              "If you intended to download every node, omit onlyExportTagged (or set it to false).",
+          },
+        ],
+      };
+    }
 
     // Resolve localPath against the configured image directory.
     const baseDir = imageDir ?? process.cwd();
@@ -130,7 +162,7 @@ async function downloadFigmaImages(
     let stopHeartbeat: (() => void) | undefined;
     const { downloads, successCount, duplicatesRemoved } = await runDownloadFigmaImages(
       figmaService,
-      { fileKey, nodes, localPath: resolvedPath, densities },
+      { fileKey, nodes: filteredNodes, localPath: resolvedPath, densities },
       {
         onDownloadStart: async (downloadCount) => {
           await sendProgress(extra, 1, 3, `Resolved ${downloadCount} images, downloading`);
@@ -203,7 +235,7 @@ async function downloadFigmaImages(
 
 function getDescription(imageDir?: string) {
   const baseDir = imageDir ?? process.cwd();
-  return `Download Android-density PNG variants of Figma image, icon, and IMAGE-PNG nodes. Defaults to xhdpi (2x) and xxhdpi (3x). Files are saved under <localPath>/mipmap-{bucket}/ relative to the server's image directory: ${baseDir}`;
+  return `Download Android-density PNG variants of Figma image, icon, and IMAGE-PNG nodes. Defaults to xhdpi (2x) and xxhdpi (3x). Files are saved under <localPath>/mipmap-{bucket}/ relative to the server's image directory: ${baseDir}. Set onlyExportTagged=true to skip nodes the walker auto-detected (vectors / image fills) and only download the ones the designer explicitly marked with Export Settings — useful when the caller plans to substitute color placeholders for the rest.`;
 }
 
 function rejectionDetails(

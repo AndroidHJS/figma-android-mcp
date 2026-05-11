@@ -171,6 +171,7 @@ export const visualsExtractor: ExtractorFn = (node, result, context) => {
       context.traversalState.imageAssets.push({
         nodeId: node.id,
         name: node.name,
+        category: "auto-detected",
         reason: "contains image fills",
         suggestedFileName: toImageFileName(node.name),
       });

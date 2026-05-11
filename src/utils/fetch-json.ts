@@ -90,17 +90,17 @@ export async function fetchJSON<T extends { status?: number }>(
     return { data, rawSize };
   } catch (error: unknown) {
     const networkCode = getConnectionErrorCode(error);
-    if (networkCode) {
-      const message = error instanceof Error ? error.message : String(error);
-      const wrapped = new Error(
-        `${message}\n\nCould not connect to the Figma API. If your network requires a proxy, ` +
-          `set the --proxy flag in your MCP server config or the FIGMA_PROXY environment variable ` +
-          `to your proxy URL (e.g. http://proxy:8080).`,
-        { cause: error },
-      );
-      tagError(wrapped, { network_code: networkCode, category: "network", is_retryable: true });
-    }
-    throw error;
+    if (!networkCode) throw error;
+
+    const message = error instanceof Error ? error.message : String(error);
+    const wrapped = new Error(
+      `${message}\n\nCould not connect to the Figma API. If your network requires a proxy, ` +
+        `set the --proxy flag in your MCP server config or the FIGMA_PROXY environment variable ` +
+        `to your proxy URL (e.g. http://proxy:8080).`,
+      { cause: error },
+    );
+    // tagError is `: never` — attaches meta and throws `wrapped`.
+    tagError(wrapped, { network_code: networkCode, category: "network", is_retryable: true });
   }
 }
 

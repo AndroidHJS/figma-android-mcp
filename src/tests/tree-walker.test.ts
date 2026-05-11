@@ -712,6 +712,7 @@ describe("exportSettings detection", () => {
     expect(traversalState.imageAssets[0]).toMatchObject({
       nodeId: "62:1",
       name: "Export Me",
+      category: "export-tagged",
       reason: "node has exportSettings",
     });
   });
@@ -768,6 +769,7 @@ describe("exportSettings detection", () => {
     expect(traversalState.imageAssets).toHaveLength(1);
     expect(traversalState.imageAssets[0]).toMatchObject({
       nodeId: "65:1",
+      category: "export-tagged",
       reason: "node has exportSettings",
     });
   });
@@ -795,10 +797,17 @@ describe("exportSettings detection", () => {
     expect(traversalState.imageAssets).toHaveLength(2);
 
     const exportAssets = traversalState.imageAssets.filter(
-      (a) => a.reason === "node has exportSettings",
+      (a) => a.category === "export-tagged",
     );
     expect(exportAssets).toHaveLength(1);
     expect(exportAssets[0].nodeId).toBe("66:1");
+    expect(exportAssets[0].reason).toBe("node has exportSettings");
+
+    const autoAssets = traversalState.imageAssets.filter(
+      (a) => a.category === "auto-detected",
+    );
+    expect(autoAssets).toHaveLength(1);
+    expect(autoAssets[0].nodeId).toBe("66:2");
   });
 
   it("keeps all image assets when no node has exportSettings", async () => {
@@ -820,5 +829,11 @@ describe("exportSettings detection", () => {
     );
 
     expect(traversalState.imageAssets).toHaveLength(2);
+    // Both paths into imageAssets (VECTOR → IMAGE-PNG in node-walker, image fill
+    // in visualsExtractor) must categorize the result as "auto-detected" so
+    // skill callers can distinguish them from designer-marked exports.
+    expect(
+      traversalState.imageAssets.every((a) => a.category === "auto-detected"),
+    ).toBe(true);
   });
 });
