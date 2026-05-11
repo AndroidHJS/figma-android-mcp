@@ -40,7 +40,7 @@ export class HttpError extends Error {
   }
 }
 
-const CONNECTION_ERROR_CODES = new Set([
+export const CONNECTION_ERROR_CODES = new Set([
   "ECONNRESET",
   "ECONNREFUSED",
   "ETIMEDOUT",
@@ -104,7 +104,7 @@ export async function fetchJSON<T extends { status?: number }>(
   }
 }
 
-function getConnectionErrorCode(error: unknown): string | undefined {
+export function getConnectionErrorCode(error: unknown): string | undefined {
   if (!(error instanceof Error)) return undefined;
   const cause = (error as { cause?: { code?: string } }).cause;
   if (cause?.code && CONNECTION_ERROR_CODES.has(cause.code)) return cause.code;

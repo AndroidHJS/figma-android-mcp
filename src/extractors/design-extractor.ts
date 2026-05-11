@@ -76,7 +76,18 @@ function parseAPIResponse(data: GetFileResponse | GetFileNodesResponse) {
     if (nodeData.styles) {
       Object.assign(extraStyles, nodeData.styles);
     }
-    nodesToParse = [nodeData.document];
+
+    // When the user fetches a specific node-id with exportSettings, stripping
+    // them from the root preserves internal structure. Without this, the entire
+    // subtree collapses to a single IMAGE-PNG — the AI sees nothing but a
+    // download link and can't generate any code. Descendant nodes with their
+    // own exportSettings are unaffected.
+    const rootNode = nodeData.document;
+    if ("exportSettings" in rootNode && Array.isArray(rootNode.exportSettings) && rootNode.exportSettings.length > 0) {
+      delete rootNode.exportSettings;
+    }
+
+    nodesToParse = [rootNode];
   } else {
     // GetFileResponse
     Object.assign(aggregatedComponents, data.components);

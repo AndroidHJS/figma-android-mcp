@@ -34,6 +34,14 @@ const parameters = {
     .describe(
       "OPTIONAL. Do NOT use unless explicitly requested by the user. Controls how many levels deep to traverse the node tree.",
     ),
+  includePreview: z
+    .boolean()
+    .optional()
+    .describe(
+      "设为 true 以获取该节点的渲染截图（PNG，2x 分辨率），嵌入 MCP 响应的 image 内容块。" +
+      "适用场景：你需要根据设计稿生成 UI 代码，需对照截图校验布局、间距、颜色、字体、组件形态。" +
+      "不适用场景：仅查看节点元数据、探索设计结构、提取数值信息。省略时默认不拉取。",
+    ),
 };
 
 const parametersSchema = z.object(parameters);
@@ -50,7 +58,7 @@ async function getFigmaData(
   extra: ToolExtra,
 ) {
   try {
-    const { fileKey, nodeId: rawNodeId, depth } = parametersSchema.parse(params);
+    const { fileKey, nodeId: rawNodeId, depth, includePreview } = parametersSchema.parse(params);
 
     // Replace - with : in nodeId for our query — Figma API expects :.
     // MCP-specific input quirk, so it lives here rather than in the shared core.
@@ -97,7 +105,7 @@ async function getFigmaData(
       { type: "text"; text: string } | { type: "image"; mimeType: string; data: string }
     > = [{ type: "text" as const, text: result.formatted }];
 
-    if (nodeId) {
+    if (nodeId && includePreview) {
       const preview = await figmaService.getNodePreviewImage(fileKey, nodeId);
       if (preview) {
         content.push({ type: "image" as const, mimeType: preview.mimeType, data: preview.base64 });
@@ -123,7 +131,7 @@ async function getFigmaData(
 export const getFigmaDataTool = {
   name: "get_figma_data",
   description:
-    "Get comprehensive Figma file data. Layout dimensions use dp units, font sizes use sp units. Colors are hex/rgba. Vectors become IMAGE-PNG nodes. Component variants (VARIANT type) are surfaced with full option lists.\n\nCRITICAL — the output includes an `imageAssets` section listing every node that must be downloaded as a PNG. Before writing ANY code, call `download_figma_images` with the nodeIds from `imageAssets`. These are rendered images, not code-drawable elements.\n\nOUTPUT SECTIONS — the output includes a `screen` field (design canvas dimensions in dp) and a `layoutHints` field (responsive layout rules). Layout fields are platform-native: `layout`/`arrangement`/`alignment`/`spacing`/`width`/`height` for Compose, or `orientation`/`gravity`/`layout_width`/`layout_height` for traditional Views. Follow layoutHints and use the layout fields directly in your code.",
+    "Get comprehensive Figma file data. Layout dimensions use dp units, font sizes use sp units. Colors are hex/rgba. Vectors become IMAGE-PNG nodes. Component variants (VARIANT type) are surfaced with full option lists.\n\nCRITICAL — the output includes an `imageAssets` section listing every node that must be downloaded as a PNG. Before writing ANY code, call `download_figma_images` with the nodeIds from `imageAssets`. These are rendered images, not code-drawable elements.\n\nOUTPUT SECTIONS — the output includes a `screen` field (design canvas dimensions in dp) and a `layoutHints` field (responsive layout rules). Layout fields are platform-native: `layout`/`arrangement`/`alignment`/`spacing`/`width`/`height` for Compose, or `orientation`/`gravity`/`layout_width`/`layout_height` for traditional Views. Follow layoutHints and use the layout fields directly in your code.\n\nPREVIEW — Set includePreview to true when fetching a specific node for UI code generation. The response will include a rendered PNG screenshot for visual verification. Omit to skip the image and reduce latency/bandwidth.",
   parametersSchema,
   handler: getFigmaData,
 } as const;

@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { tagError } from "~/utils/error-meta.js";
 import { isWithin } from "~/utils/local-path.js";
+import { getConnectionErrorCode } from "~/utils/fetch-json.js";
 
 export type StyleId = `${string}_${string}` & { __brand: "StyleId" };
 
@@ -13,6 +14,31 @@ export type StyleId = `${string}_${string}` & { __brand: "StyleId" };
  * @returns A Promise that resolves to the full file path where the image was saved
  * @throws Error if download fails
  */
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
+
+async function fetchWithRetry(
+  imageUrl: string,
+  retries: number = MAX_RETRIES,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(imageUrl, { method: "GET" });
+      return response;
+    } catch (error) {
+      lastError = error;
+      // Only retry on network-level errors (connection refused, timeout, DNS, etc.),
+      // not on HTTP error responses (those are returned as ok=false responses).
+      if (attempt < retries && getConnectionErrorCode(error)) {
+        const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
 export async function downloadFigmaImage(
   fileName: string,
   localPath: string,
@@ -31,10 +57,7 @@ export async function downloadFigmaImage(
       });
     }
 
-    // Use fetch to download the image
-    const response = await fetch(imageUrl, {
-      method: "GET",
-    });
+    const response = await fetchWithRetry(imageUrl);
 
     if (!response.ok) {
       tagError(new Error(`Failed to download image: ${response.statusText}`), {
@@ -42,17 +65,14 @@ export async function downloadFigmaImage(
       });
     }
 
-    // Create write stream
     const writer = fs.createWriteStream(fullPath);
 
-    // Get the response as a readable stream and pipe it to the file
     const reader = response.body?.getReader();
     if (!reader) {
       tagError(new Error("Failed to get response body"), { category: "image_download" });
     }
 
     return new Promise((resolve, reject) => {
-      // Process stream
       const processStream = async () => {
         try {
           while (true) {
@@ -61,7 +81,12 @@ export async function downloadFigmaImage(
               writer.end();
               break;
             }
-            writer.write(value);
+            const canContinue = writer.write(value);
+            // Handle backpressure: when the internal buffer is full, wait for
+            // the drain event before writing more data.
+            if (!canContinue) {
+              await new Promise<void>((res) => writer.once("drain", res));
+            }
           }
         } catch (err) {
           writer.end();
@@ -70,7 +95,6 @@ export async function downloadFigmaImage(
         }
       };
 
-      // Resolve only when the stream is fully written
       writer.on("finish", () => {
         resolve(fullPath);
       });
@@ -85,6 +109,15 @@ export async function downloadFigmaImage(
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    const networkCode = getConnectionErrorCode(error);
+    if (networkCode) {
+      throw new Error(
+        `${errorMessage}\n\nCould not connect to the Figma CDN. If your network requires a proxy, ` +
+          `set the --proxy flag in your MCP server config or the FIGMA_PROXY environment variable ` +
+          `to your proxy URL (e.g. http://proxy:8080).`,
+        { cause: error },
+      );
+    }
     throw new Error(`Error downloading image: ${errorMessage}`, { cause: error });
   }
 }
