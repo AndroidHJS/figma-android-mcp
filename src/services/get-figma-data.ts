@@ -16,6 +16,7 @@ import {
   detectVariables,
 } from "~/services/get-figma-data-metrics.js";
 import { type Platform, mapLayoutStyles } from "~/platform-mappers/index.js";
+import type { Skill } from "~/skills/types.js";
 import {
   inferAutoLayoutFromPositions,
   convertFixedChildrenToFillMax,
@@ -118,6 +119,7 @@ export async function getFigmaData(
   outputFormat: "yaml" | "json",
   outputPlatform: Platform,
   hooks: GetFigmaDataHooks = {},
+  skills?: Skill[],
 ): Promise<GetFigmaDataResult> {
   const { fileKey, nodeId, depth } = input;
   const startedAt = Date.now();
@@ -190,7 +192,7 @@ export async function getFigmaData(
       mapLayoutStyles(globalVars, outputPlatform);
 
       const layoutHints = screen ? generateLayoutHints(screen, outputPlatform) : [];
-      const result = { metadata, nodes, globalVars, imageAssets, screen, layoutHints };
+      const result = { metadata, nodes, globalVars, imageAssets, screen, layoutHints, skills };
       formatted = serializeResult(result, outputFormat);
     } catch (error) {
       tagError(error, { phase: "serialize" });

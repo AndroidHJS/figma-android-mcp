@@ -10,6 +10,7 @@ import {
 } from "~/telemetry/index.js";
 import { getFigmaData as runGetFigmaData } from "~/services/get-figma-data.js";
 import type { OutputPlatform } from "~/config.js";
+import type { Skill } from "~/skills/types.js";
 
 const parameters = {
   fileKey: z
@@ -56,6 +57,7 @@ async function getFigmaData(
   authMode: AuthMode,
   clientInfo: ClientInfo | undefined,
   extra: ToolExtra,
+  skills?: Skill[],
 ) {
   try {
     const { fileKey, nodeId: rawNodeId, depth, includePreview } = parametersSchema.parse(params);
@@ -96,7 +98,7 @@ async function getFigmaData(
       },
       onComplete: (outcome) =>
         captureGetFigmaDataCall(outcome, { transport, authMode, clientInfo }),
-    });
+    }, skills);
 
     Logger.log(`Successfully extracted data: ${result.metrics.simplifiedNodeCount} nodes`);
     Logger.log("Sending result to client");

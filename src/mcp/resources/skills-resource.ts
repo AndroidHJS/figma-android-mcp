@@ -1,13 +1,13 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { loadSkills, toSkillList } from "../../skills/index.js";
+import { toSkillList } from "../../skills/index.js";
+import type { Skill } from "../../skills/types.js";
 
 /**
  * Register MCP resources for the skill system:
  * - `skill://list` — static resource returning JSON array of all skill metadata
  * - `skill://{name}` — dynamic resource returning individual skill content
  */
-export function registerSkillResources(server: McpServer, skillsDir?: string): void {
-  const skills = loadSkills(skillsDir);
+export function registerSkillResources(server: McpServer, skills: Skill[]): void {
 
   server.registerResource(
     "skill_list",

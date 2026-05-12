@@ -12,6 +12,8 @@ import {
   type GetFigmaDataParams,
 } from "./tools/index.js";
 import { registerSkillResources } from "./resources/skills-resource.js";
+import { loadSkills } from "../skills/index.js";
+import type { Skill } from "../skills/types.js";
 
 const serverInfo = {
   name: "Figma MCP Server",
@@ -38,6 +40,7 @@ function createServer(
   const server = new McpServer(serverInfo);
   const figmaService = new FigmaService(authOptions);
   const mode = authMode(authOptions);
+  const skills = loadSkills(skillsDir);
 
   const getClientInfo = (): ClientInfo | undefined => {
     const info = server.server.getClientVersion();
@@ -53,9 +56,10 @@ function createServer(
     skipImageDownloads,
     imageDir,
     getClientInfo,
+    skills,
   });
 
-  registerSkillResources(server, skillsDir);
+  registerSkillResources(server, skills);
 
   installValidationRejectCapture(server, { transport, authMode: mode, getClientInfo });
 
@@ -72,6 +76,7 @@ type RegisterToolsOptions = {
   skipImageDownloads: boolean;
   imageDir?: string;
   getClientInfo: () => ClientInfo | undefined;
+  skills: Skill[];
 };
 
 function registerTools(
@@ -97,6 +102,7 @@ function registerTools(
         options.authMode,
         options.getClientInfo(),
         extra,
+        options.skills,
       ),
   );
 
