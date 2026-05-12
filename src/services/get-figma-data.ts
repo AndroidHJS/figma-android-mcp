@@ -41,6 +41,8 @@ function generateLayoutHints(screen: { width: string; height: string }, platform
       `Parent container: Use FrameLayout as the root container. Child views are positioned via layout_marginStart/layout_marginTop.`,
       `CRITICAL — ConstraintLayout usage: ONLY add app:layout_constraint* attributes when the node's layout data explicitly contains layout_constraintHorizontal or layout_constraintVertical. If these keys are absent from the layout, place the View in a FrameLayout using ONLY layout_width, layout_height, layout_marginStart, and layout_marginTop — never add ConstraintLayout attributes to such nodes.`,
       `Centering without ConstraintLayout: When a node has layout_constraintHorizontal: "center" but no other constraint keys, use android:layout_gravity="center_horizontal" inside a FrameLayout instead of ConstraintLayout.`,
+      `FILL CHILD IN HORIZONTAL LINEARLAYOUT: When a child inside a LinearLayout with orientation="horizontal" has layout_width="match_parent" or fill sizing, use android:layout_width="0dp" android:layout_weight="1" instead.`,
+      `RIGHT-ANCHORED ELEMENTS: When a node has layout_constraintHorizontal: "MAX", in a FrameLayout use android:layout_gravity="end" with android:layout_marginEnd="Ndp". Do NOT use a fixed width + marginStart to simulate right-alignment.`,
       `Effects — NEVER use android:elevation: boxShadow values use CSS box-shadow syntax (offsetX offsetY blur spread color). They MUST be implemented as Android drawable resources (<layer-list> with <shape> for the shadow layer), not as android:elevation. Specifically: a negative Y offset (e.g., 0dp -3dp ...) means the shadow casts UPWARD — elevation cannot express this. If you are unsure how to convert a boxShadow to a drawable, skip the shadow entirely rather than using elevation.`,
     ];
   }
@@ -53,6 +55,8 @@ function generateLayoutHints(screen: { width: string; height: string }, platform
     `When node height does NOT equal ${h}: Use the dp value as-is.`,
     `When both width and height equal screen dimensions: Use .fillMaxSize() instead of .size(${wNum}.dp, ${hNum}.dp).`,
     `For content centered in a parent and narrower than the parent: Use .fillMaxWidth().padding(horizontal = M.dp) instead of .width(W.dp) + Alignment.CenterHorizontally, where M = (parentWidth - childWidth) / 2.`,
+    `FILL CHILD IN ROW: When a node's layout has width: "fillMax" (horizontal sizing = fill) and its parent is a Row, use Modifier.weight(1f) instead of a fixed .width(X.dp). weight(1f) must be inside RowScope. Children without fill sizing keep their fixed width.`,
+    `RIGHT-ANCHORED ELEMENTS: When a node's layout has horizontalConstraint: "MAX", place it inside a Box and use Modifier.align(Alignment.CenterEnd).padding(end = N.dp). Do NOT offset or marginStart to simulate right-alignment.`,
   ];
 }
 

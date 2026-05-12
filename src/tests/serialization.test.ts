@@ -77,6 +77,12 @@ describe("result serialization", () => {
           "Screen dimensions: 375dp wide x 822dp tall. Treat this as the baseline design size.",
           "When node width equals 375dp (screen width): Use .fillMaxWidth() instead of .width(375.dp).",
           "When node width does NOT equal 375dp: Use the dp value as-is (e.g., .width(343.dp)).",
+          "When node height equals 822dp (screen height): Use .fillMaxHeight() instead of .height(822.dp).",
+          "When node height does NOT equal 822dp: Use the dp value as-is.",
+          "When both width and height equal screen dimensions: Use .fillMaxSize() instead of .size(375.dp, 822.dp).",
+          "For content centered in a parent and narrower than the parent: Use .fillMaxWidth().padding(horizontal = M.dp) instead of .width(W.dp) + Alignment.CenterHorizontally, where M = (parentWidth - childWidth) / 2.",
+          "FILL CHILD IN ROW: When a node's layout has width: \"fillMax\" (horizontal sizing = fill) and its parent is a Row, use Modifier.weight(1f) instead of a fixed .width(X.dp). weight(1f) must be inside RowScope. Children without fill sizing keep their fixed width.",
+          "RIGHT-ANCHORED ELEMENTS: When a node's layout has horizontalConstraint: \"MAX\", place it inside a Box and use Modifier.align(Alignment.CenterEnd).padding(end = N.dp). Do NOT offset or marginStart to simulate right-alignment.",
         ],
       };
 
@@ -85,7 +91,7 @@ describe("result serialization", () => {
 
       expect(parsed.screen).toEqual({ width: "375dp", height: "822dp" });
       expect(Array.isArray(parsed.layoutHints)).toBe(true);
-      expect((parsed.layoutHints as string[]).length).toBe(3);
+      expect((parsed.layoutHints as string[]).length).toBe(9);
     });
 
     it("omits screen and has empty layoutHints when screen is undefined", () => {

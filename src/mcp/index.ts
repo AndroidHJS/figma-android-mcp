@@ -11,6 +11,7 @@ import {
   type DownloadImagesParams,
   type GetFigmaDataParams,
 } from "./tools/index.js";
+import { registerSkillResources } from "./resources/skills-resource.js";
 
 const serverInfo = {
   name: "Figma MCP Server",
@@ -27,11 +28,12 @@ export type CreateServerOptions = {
   outputPlatform?: OutputPlatform;
   skipImageDownloads?: boolean;
   imageDir?: string;
+  skillsDir?: string;
 };
 
 function createServer(
   authOptions: FigmaAuthOptions,
-  { transport, outputFormat = "yaml", outputPlatform = "compose", skipImageDownloads = false, imageDir }: CreateServerOptions,
+  { transport, outputFormat = "yaml", outputPlatform = "compose", skipImageDownloads = false, imageDir, skillsDir }: CreateServerOptions,
 ) {
   const server = new McpServer(serverInfo);
   const figmaService = new FigmaService(authOptions);
@@ -52,6 +54,8 @@ function createServer(
     imageDir,
     getClientInfo,
   });
+
+  registerSkillResources(server, skillsDir);
 
   installValidationRejectCapture(server, { transport, authMode: mode, getClientInfo });
 

@@ -75,6 +75,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
     outputPlatform: config.outputPlatform,
     skipImageDownloads: config.skipImageDownloads,
     imageDir: config.imageDir,
+    skillsDir: config.skillsDir,
   };
 
   if (config.isStdioMode) {

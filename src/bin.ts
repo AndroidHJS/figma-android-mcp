@@ -42,6 +42,11 @@ const argv = cli({
       description:
         "Base directory for image downloads. The download tool will only write files within this directory. Defaults to the current working directory.",
     },
+    skillsDir: {
+      type: String,
+      description:
+        "Path to a directory containing custom skill markdown files. Skills provide constraints and best practices for Figma-to-code conversion.",
+    },
     proxy: {
       type: String,
       description:

@@ -21,6 +21,7 @@ export interface ServerFlags {
   json?: boolean;
   skipImageDownloads?: boolean;
   imageDir?: string;
+  skillsDir?: string;
   proxy?: string;
   stdio?: boolean;
   noTelemetry?: boolean;
@@ -37,6 +38,7 @@ export interface ServerConfig {
   outputPlatform: OutputPlatform;
   skipImageDownloads: boolean;
   imageDir: string;
+  skillsDir: string | undefined;
   isStdioMode: boolean;
   noTelemetry: boolean;
   designDensity: "auto" | "mdpi" | "xhdpi" | "xxhdpi";
@@ -150,6 +152,12 @@ export function getServerConfig(flags: ServerFlags): ServerConfig {
     process.cwd(),
   );
 
+  const skillsDir = resolve(
+    flags.skillsDir ? resolvePath(flags.skillsDir) : undefined,
+    envStr("SKILLS_DIR") ? resolvePath(envStr("SKILLS_DIR")!) : undefined,
+    undefined,
+  ).value;
+
   // Only resolve explicit proxy config here. Standard env vars (HTTPS_PROXY, HTTP_PROXY,
   // NO_PROXY) are handled by undici's EnvHttpProxyAgent at the dispatcher level, which
   // correctly respects NO_PROXY exclusions.
@@ -194,6 +202,7 @@ export function getServerConfig(flags: ServerFlags): ServerConfig {
     outputFormat: outputFormat.source,
     skipImageDownloads: skipImageDownloads.source,
     imageDir: imageDir.source,
+    skillsDir: skillsDir ? "cli" : "default",
     designDensity: designDensity.source,
     outputPlatform: outputPlatform.source,
     telemetry: telemetrySource,
@@ -240,6 +249,7 @@ export function getServerConfig(flags: ServerFlags): ServerConfig {
     outputPlatform: outputPlatform.value,
     skipImageDownloads: skipImageDownloads.value,
     imageDir: imageDir.value,
+    skillsDir,
     isStdioMode,
     noTelemetry,
     designDensity: designDensity.value,
