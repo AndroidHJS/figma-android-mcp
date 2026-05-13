@@ -271,7 +271,7 @@ export class FigmaService {
   ): Promise<{ base64: string; mimeType: "image/png" } | null> {
     try {
       const normalizedId = nodeId.replace(/-/g, ":");
-      const endpoint = `/images/${fileKey}?ids=${normalizedId}&format=png&scale=2`;
+      const endpoint = `/images/${fileKey}?ids=${normalizedId}&format=png&scale=1`;
       const response = await this.request<GetImagesResponse>(endpoint);
       const validImages = this.filterValidImages(response.images);
       const imageUrl = validImages[normalizedId];

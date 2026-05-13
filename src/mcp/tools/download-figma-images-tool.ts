@@ -160,7 +160,7 @@ async function downloadFigmaImages(
     await sendProgress(extra, 0, 3, "Resolving image downloads");
 
     let stopHeartbeat: (() => void) | undefined;
-    const { downloads, successCount, duplicatesRemoved } = await runDownloadFigmaImages(
+    const { downloads, successCount, duplicatesRemoved, aliasMap, fallbacks } = await runDownloadFigmaImages(
       figmaService,
       { fileKey, nodes: filteredNodes, localPath: resolvedPath, densities },
       {
@@ -191,6 +191,19 @@ async function downloadFigmaImages(
     const dedupNote =
       duplicatesRemoved > 0 ? ` (${duplicatesRemoved} duplicate${duplicatesRemoved > 1 ? "s" : ""} removed)` : "";
 
+    const fallbackNote =
+      fallbacks.length > 0
+        ? `\n\n## Density Fallbacks\n` +
+          fallbacks
+            .map((f) => {
+              const reason = f.reason === "figma-api-returned-empty"
+                ? "Figma API 返回空结果"
+                : "Figma API 请求失败";
+              return `- ${f.density}: ${reason}，已跳过。Android 将自动从更低 density bucket 加载并放大到正确尺寸。`;
+            })
+            .join("\n")
+        : "";
+
     const MAX_LIST_ITEMS = 20;
     const imagesList = downloads.slice(0, MAX_LIST_ITEMS)
       .map(({ perDensity, requestedFileNames }) => {
@@ -210,11 +223,20 @@ async function downloadFigmaImages(
         ? `\n... (${downloads.length - MAX_LIST_ITEMS} more)`
         : "";
 
+    const aliasEntries = Object.entries(aliasMap);
+    const aliasSection =
+      aliasEntries.length > 0
+        ? `\n\n## Alias Map (requested filename → actual file on disk)\n` +
+          aliasEntries
+            .map(([requested, actual]) => `- ${requested} → ${actual}`)
+            .join("\n")
+        : "";
+
     return {
       content: [
         {
           type: "text" as const,
-          text: `Downloaded ${totalSuccess} images (${densityCounts})${dedupNote} to \`${resolvedPath}\`:\n${imagesList}${overflow}`,
+          text: `Downloaded ${totalSuccess} images (${densityCounts})${dedupNote} to \`${resolvedPath}\`:\n${imagesList}${overflow}${fallbackNote}${aliasSection}`,
         },
       ],
     };

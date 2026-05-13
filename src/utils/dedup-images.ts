@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import fs from "fs";
+import path from "path";
 import type { PerDensityDownload } from "~/services/download-figma-images.js";
 
 export type DedupResult = {
@@ -7,6 +8,12 @@ export type DedupResult = {
   /** Original indices of download items that survived dedup (non-empty after removing duplicates). */
   keptIndices: number[];
   duplicateCount: number;
+  /**
+   * Maps removed filenames (basename) → kept filenames (basename).
+   * When a file is deleted because its content hash matches an earlier file,
+   * this records which filename to use instead.
+   */
+  dedupMap: Record<string, string>;
 };
 
 /**
@@ -17,6 +24,7 @@ export type DedupResult = {
 export function deduplicateImages(allResults: PerDensityDownload[][]): DedupResult {
   const hashToFirst = new Map<string, PerDensityDownload>();
   let duplicateCount = 0;
+  const dedupMap: Record<string, string> = {};
 
   for (const perItem of allResults) {
     for (let i = perItem.length - 1; i >= 0; i--) {
@@ -33,6 +41,11 @@ export function deduplicateImages(allResults: PerDensityDownload[][]): DedupResu
           // File already gone or locked; skip
         }
         duplicateCount++;
+        const removedName = path.basename(filePath);
+        const keptName = path.basename(existing.filePath);
+        if (removedName !== keptName) {
+          dedupMap[removedName] = keptName;
+        }
         perItem.splice(i, 1);
       } else {
         hashToFirst.set(hash, entry);
@@ -49,7 +62,7 @@ export function deduplicateImages(allResults: PerDensityDownload[][]): DedupResu
     }
   }
 
-  return { results, keptIndices, duplicateCount };
+  return { results, keptIndices, duplicateCount, dedupMap };
 }
 
 function sha256File(filePath: string): string {

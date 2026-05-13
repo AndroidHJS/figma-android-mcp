@@ -94,6 +94,7 @@ function toDownloadImagesEvent(
       typeof outcome.successCount === "number"
         ? outcome.successCount
         : outcome.successCount?.total,
+    fallback_count: outcome.fallbacks?.length ?? 0,
     ...errorFields(outcome.error),
   };
 }

@@ -44,6 +44,8 @@ describe("download_figma_images onlyExportTagged filter", () => {
       downloads: [],
       successCount: { total: 0 },
       duplicatesRemoved: 0,
+      aliasMap: {},
+      fallbacks: [],
     });
   });
 

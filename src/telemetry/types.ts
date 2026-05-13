@@ -80,6 +80,7 @@ export type DownloadFigmaImagesCall = CommonCallProps & {
   tool: "download_figma_images";
   image_count: number;
   success_count?: number;
+  fallback_count?: number;
 };
 
 export type ToolCallProperties = GetFigmaDataCall | DownloadFigmaImagesCall;
