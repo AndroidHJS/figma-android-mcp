@@ -197,7 +197,12 @@ export async function getFigmaData(
       mapLayoutStyles(globalVars, outputPlatform);
 
       const layoutHints = screen ? generateLayoutHints(screen, outputPlatform) : [];
-      const result = { metadata, nodes, globalVars, imageAssets, screen, layoutHints, regionHints, _MANDATORY_RULES: skills };
+      const _REQUIRED_RULES = skills?.map((s) => ({
+        uri: `skill://${s.name}`,
+        summary: s.description,
+      }));
+
+      const result = { metadata, nodes, globalVars, imageAssets, screen, layoutHints, regionHints, _REQUIRED_RULES };
       formatted = serializeResult(result, outputFormat);
     } catch (error) {
       tagError(error, { phase: "serialize" });
