@@ -137,7 +137,7 @@ describe("convertFixedChildrenToFillMax — Column parent", () => {
     expect(unchanged.padding).toBeUndefined();
   });
 
-  test("skips instance internal child (id starts with I)", () => {
+  test("converts instance internal child (no longer skipped)", () => {
     const globalVars: GlobalVars = { styles: {} };
 
     const parentLayout = makeLayout({
@@ -158,8 +158,8 @@ describe("convertFixedChildrenToFillMax — Column parent", () => {
 
     convertFixedChildrenToFillMax([parent], globalVars);
 
-    const unchanged = globalVars.styles[childKey] as SimplifiedLayout;
-    expect(unchanged.sizing?.horizontal).toBe("fixed");
+    const updated = globalVars.styles[child.layout!] as SimplifiedLayout;
+    expect(updated.sizing?.horizontal).toBe("fill");
   });
 
   test("skips absolute-positioned child", () => {

@@ -94,6 +94,68 @@ describe("result serialization", () => {
       expect((parsed.layoutHints as string[]).length).toBe(9);
     });
 
+    it("includes regionHints when populated", () => {
+      const data = {
+        metadata: { name: "Frame 1" },
+        nodes: [],
+        globalVars: { styles: {} },
+        imageAssets: [],
+        layoutHints: [],
+        regionHints: [
+          {
+            parentId: "1:2",
+            parentName: "Dashboard",
+            regions: [
+              {
+                mode: "column",
+                childIds: ["1:3", "1:4"],
+                childNames: ["Header", "SearchBar"],
+                gap: "8dp",
+              },
+              {
+                childIds: ["1:5"],
+                childNames: ["Footer"],
+              },
+            ],
+          },
+        ],
+      };
+
+      const output = serializeResult(data, "yaml");
+      const parsed = yaml.load(output) as Record<string, unknown>;
+
+      const hints = parsed.regionHints as Array<Record<string, unknown>>;
+      expect(hints).toHaveLength(1);
+      expect(hints[0].parentId).toBe("1:2");
+      expect(hints[0].parentName).toBe("Dashboard");
+      expect((hints[0].regions as Array<unknown>)).toHaveLength(2);
+
+      const col = (hints[0].regions as Array<Record<string, unknown>>)[0];
+      expect(col.mode).toBe("column");
+      expect(col.childIds).toEqual(["1:3", "1:4"]);
+      expect(col.gap).toBe("8dp");
+
+      const singleton = (hints[0].regions as Array<Record<string, unknown>>)[1];
+      expect(singleton.mode).toBeUndefined();
+      expect(singleton.childIds).toEqual(["1:5"]);
+    });
+
+    it("serializes empty regionHints as empty array", () => {
+      const data = {
+        metadata: { name: "Frame 1" },
+        nodes: [],
+        globalVars: { styles: {} },
+        imageAssets: [],
+        layoutHints: [],
+        regionHints: [],
+      };
+
+      const output = serializeResult(data, "yaml");
+      const parsed = yaml.load(output) as Record<string, unknown>;
+
+      expect(parsed.regionHints).toEqual([]);
+    });
+
     it("omits screen and has empty layoutHints when screen is undefined", () => {
       const data = {
         metadata: { name: "Frame 1" },

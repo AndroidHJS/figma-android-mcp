@@ -308,19 +308,19 @@ function buildSimplifiedLayoutValues(
 // ---------------------------------------------------------------------------
 
 /** Tolerance (in dp) for treating x or y offsets as "aligned". */
-const ALIGN_TOLERANCE = 2;
+export const ALIGN_TOLERANCE = 4;
 
 /** Tolerance (in dp) for treating gaps between children as "consistent". */
-const GAP_TOLERANCE = 1;
+export const GAP_TOLERANCE = 3;
 
 /** Extract the numeric value from a dp string like "8dp" or "16.5dp". */
-function parseDp(value: string | undefined): number | undefined {
+export function parseDp(value: string | undefined): number | undefined {
   if (!value) return undefined;
   const num = parseFloat(value);
   return isNaN(num) ? undefined : num;
 }
 
-interface ChildLayoutData {
+export interface ChildLayoutData {
   node: SimplifiedNode;
   layout: SimplifiedLayout;
   x: number;
@@ -438,7 +438,7 @@ function tryInferRow(data: ChildLayoutData[], parentLayout: SimplifiedLayout): b
 
 // ---- Gap computation -------------------------------------------------------
 
-function computeConsistentGap(
+export function computeConsistentGap(
   sorted: ChildLayoutData[],
   mode: "column" | "row",
 ): string | undefined {
@@ -504,8 +504,7 @@ function computeParentContentDims(parentLayout: SimplifiedLayout): ContentDims {
  * children inside auto-layout parents to fill + padding.
  *
  * Mutates `globalVars.styles` — cloned layouts are stored under new keys and
- * affected nodes updated to reference the new key. Does not recurse into
- * INSTANCE internal children (ids starting with "I").
+ * affected nodes updated to reference the new key.
  */
 export function convertFixedChildrenToFillMax(
   nodes: SimplifiedNode[],
@@ -533,7 +532,6 @@ function tryConvertChildren(
 ): void {
   for (const child of children) {
     if (!child.layout) continue;
-    if (child.id.startsWith("I")) continue;
 
     const childLayout = globalVars.styles[child.layout] as SimplifiedLayout | undefined;
     if (!childLayout) continue;

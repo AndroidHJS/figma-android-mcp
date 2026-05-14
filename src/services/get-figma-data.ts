@@ -21,6 +21,7 @@ import {
   inferAutoLayoutFromPositions,
   convertFixedChildrenToFillMax,
 } from "~/transformers/layout.js";
+import { generateRegionHints } from "~/transformers/region-hints.js";
 
 export type { GetFigmaDataMetrics } from "~/services/get-figma-data-metrics.js";
 
@@ -173,6 +174,10 @@ export async function getFigmaData(
     // output directly expresses responsive layout instead of fixed dimensions.
     convertFixedChildrenToFillMax(simplifiedDesign.nodes, simplifiedDesign.globalVars);
 
+    // Generate per-parent region grouping hints for parents whose children
+    // don't form a single Column/Row (mode still "none" after inference).
+    const regionHints = generateRegionHints(simplifiedDesign.nodes, simplifiedDesign.globalVars);
+
     writeLogs("figma-simplified.json", simplifiedDesign);
 
     const rawNodeCount = nodeCounter.count;
@@ -192,7 +197,7 @@ export async function getFigmaData(
       mapLayoutStyles(globalVars, outputPlatform);
 
       const layoutHints = screen ? generateLayoutHints(screen, outputPlatform) : [];
-      const result = { metadata, nodes, globalVars, imageAssets, screen, layoutHints, skills };
+      const result = { metadata, nodes, globalVars, imageAssets, screen, layoutHints, regionHints, _MANDATORY_RULES: skills };
       formatted = serializeResult(result, outputFormat);
     } catch (error) {
       tagError(error, { phase: "serialize" });
