@@ -85,8 +85,9 @@ const parameters = {
   onlyExportTagged: z
     .boolean()
     .optional()
+    .default(true)
     .describe(
-      "If true, only download nodes whose `category` is 'export-tagged'. Use this when the caller wants to defer auto-detected assets (vectors / image fills) to code generation rather than shipping them as PNG resources.",
+      "Defaults to true — only downloads nodes whose `category` is 'export-tagged' (designer-marked Export Settings). Set to false to also download auto-detected assets (vectors / image fills).",
     ),
   densities: z
     .array(z.enum(DENSITY_KEYS as [string, ...string[]]))
@@ -129,8 +130,8 @@ async function downloadFigmaImages(
           {
             type: "text" as const,
             text:
-              "No export-tagged nodes to download. The caller passed onlyExportTagged=true but none of the supplied nodes had category === 'export-tagged'. " +
-              "If you intended to download every node, omit onlyExportTagged (or set it to false).",
+              "No export-tagged nodes to download. The caller passed onlyExportTagged=true (the default) but none of the supplied nodes had category === 'export-tagged'. " +
+              "Set onlyExportTagged=false to download every node, or use color placeholders for auto-detected assets.",
           },
         ],
       };
@@ -257,7 +258,7 @@ async function downloadFigmaImages(
 
 function getDescription(imageDir?: string) {
   const baseDir = imageDir ?? process.cwd();
-  return `Download Android-density PNG variants of Figma image, icon, and IMAGE-PNG nodes. Defaults to xhdpi (2x) and xxhdpi (3x). Files are saved under <localPath>/mipmap-{bucket}/ relative to the server's image directory: ${baseDir}. Set onlyExportTagged=true to skip nodes the walker auto-detected (vectors / image fills) and only download the ones the designer explicitly marked with Export Settings — useful when the caller plans to substitute color placeholders for the rest.`;
+  return `Download Android-density PNG variants of Figma image, icon, and IMAGE-PNG nodes. Defaults to xhdpi (2x) and xxhdpi (3x). Files are saved under <localPath>/mipmap-{bucket}/ relative to the server's image directory: ${baseDir}. By default only downloads export-tagged nodes (designer-marked Export Settings). Set onlyExportTagged=false to include auto-detected assets (vectors / image fills).`;
 }
 
 function rejectionDetails(

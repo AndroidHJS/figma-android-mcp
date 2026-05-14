@@ -104,7 +104,7 @@ describe("download_figma_images onlyExportTagged filter", () => {
     expect(runDownloadFigmaImagesMock).not.toHaveBeenCalled();
   });
 
-  it("forwards every node when onlyExportTagged is omitted", async () => {
+  it("forwards every node when onlyExportTagged is false", async () => {
     const result = await downloadFigmaImagesTool.handler(
       {
         ...baseParams,
@@ -112,6 +112,7 @@ describe("download_figma_images onlyExportTagged filter", () => {
           { nodeId: "1:1", fileName: "icon.png", category: "export-tagged" },
           { nodeId: "1:2", fileName: "bg.png", category: "auto-detected" },
         ],
+        onlyExportTagged: false,
       },
       stubFigmaService,
       imageDir,

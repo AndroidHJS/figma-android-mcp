@@ -11,6 +11,7 @@ import {
 import { getFigmaData as runGetFigmaData } from "~/services/get-figma-data.js";
 import type { OutputPlatform } from "~/config.js";
 import type { Skill } from "~/skills/types.js";
+import type { ContentBlock } from "@modelcontextprotocol/sdk/types.js";
 
 const parameters = {
   fileKey: z
@@ -103,17 +104,21 @@ async function getFigmaData(
     Logger.log(`Successfully extracted data: ${result.metrics.simplifiedNodeCount} nodes`);
     Logger.log("Sending result to client");
 
-    const content: Array<{ type: "text"; text: string }> = [
-      { type: "text" as const, text: result.formatted },
+    const content: ContentBlock[] = [
+      { type: "text", text: result.formatted },
     ];
 
     if (nodeId && includePreview) {
       const preview = await figmaService.getNodePreviewImage(fileKey, nodeId);
       if (preview) {
-        const dataUri = `data:${preview.mimeType};base64,${preview.base64}`;
         content.push({
-          type: "text" as const,
-          text: `![Figma design preview](${dataUri})\n\n请对照上方截图校验生成代码的还原度——重点检查布局、间距、颜色、字体及组件形态。`,
+          type: "image",
+          data: preview.base64,
+          mimeType: preview.mimeType,
+        });
+        content.push({
+          type: "text",
+          text: "以上为设计稿渲染截图，请对照校验布局、间距、颜色、字体及组件形态。",
         });
       }
     }

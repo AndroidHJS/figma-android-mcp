@@ -26,7 +26,7 @@ const stubExtra = {
 
 const validParams = {
   fileKey: "abc123",
-  nodes: [{ nodeId: "1:2", fileName: "test.png" }],
+  nodes: [{ nodeId: "1:2", fileName: "test.png", category: "export-tagged" as const }],
   densities: ["xhdpi"],
 };
 
