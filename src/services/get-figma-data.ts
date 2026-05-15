@@ -63,7 +63,7 @@ function generateLayoutHints(screen: { width: string; height: string }, platform
     `ABSOLUTE POSITIONING: When a parent frame has layout mode "none" (no layout/Row/Column field), children use absolute positioning with offset.x and offset.y values. In Compose, place these children inside a Box using Modifier.offset(x = N.dp, y = M.dp). NEVER substitute Column + Spacer for absolute positioning — offset.y IS the exact y-coordinate from the design, not a sequential gap. Spacer heights in a Column are unreliable approximations; use Box + offset instead for pixel-perfect fidelity.`,
     `IMAGE SCALING: Downloaded Figma images are rendered PNGs at specific dp dimensions. Use ContentScale.FillBounds to make the image fill its container exactly (equivalent to ImageView scaleType="fitXY"). Do NOT use ContentScale.Fit — it preserves aspect ratio and will leave gaps when the image's intrinsic ratio differs from the target container size.`,
     `FONT WEIGHT: When text style indicates "bold" or fontWeight is 700, use FontWeight.Bold (weight = 700). Do NOT use FontWeight.SemiBold (weight = 600) unless the design data explicitly specifies semi-bold or fontWeight 600.`,
-    `GRADIENT: Default linear gradient in Compose uses Brush.horizontalGradient(startX=0f, endX=1f) for full-width left-to-right. Only set endX < 1f when Figma gradientTransform data explicitly shows a compressed range. Without explicit transform data, use startX=0f, endX=1f.`,
+    `GRADIENT: Map Figma gradient fills to Compose Brush. A gradient is a FILL of a shape, NOT a separate drawn element. - LINEAR → Brush.horizontalGradient(colors, startX=0f, endX=1f). Only set endX < 1f when Figma gradientTransform data explicitly shows a compressed range. - RADIAL → Brush.radialGradient(colors). Apply via Modifier.background(brush, shape). The node's own width/height/cornerRadius define the SHAPE; the radial gradient just fills it. Do NOT draw a separate circle — do NOT use Canvas, drawCircle, or any manual shape drawing for gradient fills. - The CSS gradient string (e.g. "radial-gradient(circle at ...)") describes the fill's internal color interpolation, NOT the node's geometry. Ignore "circle" / "ellipse" keywords — they refer to gradient spread shape, not the widget shape.`,
     `Z-ORDER IN BOX: Compose Box draws children in declaration order — later children render on top. When translating a Figma frame where some children overlap others, declare underlay/background elements first, overlay/foreground elements last. Check offset values — a child with a larger offset.y may still need to be behind a child with a smaller offset.y if the Figma z-order says so.`,
   ];
 }
@@ -203,10 +203,12 @@ export async function getFigmaData(
       mapLayoutStyles(globalVars, outputPlatform);
 
       const layoutHints = screen ? generateLayoutHints(screen, outputPlatform) : [];
-      const _REQUIRED_RULES = skills?.map((s) => ({
-        uri: `skill://${s.name}`,
-        summary: s.description,
-      }));
+      const _REQUIRED_RULES = skills
+        ?.filter((s) => s.category !== "workflow")
+        .map((s) => ({
+          uri: `skill://${s.name}`,
+          summary: s.description,
+        }));
 
       const result = { metadata, nodes, globalVars, imageAssets, screen, layoutHints, regionHints, _REQUIRED_RULES };
       formatted = serializeResult(result, outputFormat);

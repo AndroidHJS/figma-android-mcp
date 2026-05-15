@@ -8,6 +8,7 @@ import type { ToolExtra } from "./progress.js";
 import {
   downloadFigmaImagesTool,
   getFigmaDataTool,
+  getSkillTool,
   type DownloadImagesParams,
   type GetFigmaDataParams,
 } from "./tools/index.js";
@@ -104,6 +105,18 @@ function registerTools(
         extra,
         options.skills,
       ),
+  );
+
+  server.registerTool(
+    getSkillTool.name,
+    {
+      title: "Get Skill Content",
+      description: getSkillTool.description,
+      inputSchema: getSkillTool.parametersSchema,
+      annotations: { readOnlyHint: true },
+    },
+    (params: { name: string }) =>
+      getSkillTool.handler(params, options.skills),
   );
 
   if (!options.skipImageDownloads) {
