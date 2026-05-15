@@ -24,6 +24,12 @@ export interface RegionGroup {
   childNames: string[];
   /** Uniform gap for multi-child area, undefined when inconsistent. Not set for stack regions. */
   gap?: string;
+  /** Recommended Compose container for this region. Stack → Box, Column → Column, Row → Row. */
+  composeContainer?: "Box" | "Column" | "Row";
+  /** Recommended Views container for this region. Stack → FrameLayout, Column → LinearLayout(vertical), Row → LinearLayout(horizontal). */
+  viewsContainer?: "FrameLayout" | "LinearLayout";
+  /** For viewsContainer="LinearLayout", the orientation to use. */
+  viewsOrientation?: "horizontal" | "vertical";
 }
 
 export interface RegionHint {
@@ -87,6 +93,8 @@ function processParent(parent: SimplifiedNode, globalVars: GlobalVars): RegionHi
       mode: "stack",
       childIds: group.map((d) => d.node.id),
       childNames: group.map((d) => d.node.name),
+      composeContainer: "Box",
+      viewsContainer: "FrameLayout",
     });
   }
 
@@ -239,5 +247,8 @@ function buildFlowRegion(group: ChildDatum[], mode: "column" | "row"): RegionGro
     childIds: group.map((d) => d.node.id),
     childNames: group.map((d) => d.node.name),
     gap,
+    composeContainer: mode === "column" ? "Column" : "Row",
+    viewsContainer: "LinearLayout",
+    viewsOrientation: mode === "column" ? "vertical" : "horizontal",
   };
 }

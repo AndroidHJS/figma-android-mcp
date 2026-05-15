@@ -44,6 +44,13 @@ const parameters = {
       "适用场景：你需要根据设计稿生成 UI 代码，需对照截图校验布局、间距、颜色、字体、组件形态。" +
       "不适用场景：仅查看节点元数据、探索设计结构、提取数值信息。省略时默认不拉取。",
     ),
+  outputPlatform: z
+    .enum(["compose", "views"])
+    .optional()
+    .default("compose")
+    .describe(
+      "Output platform style: \"compose\" for Jetpack Compose layout fields, \"views\" for traditional Android Views layout fields. Defaults to \"compose\".",
+    ),
 };
 
 const parametersSchema = z.object(parameters);
@@ -53,7 +60,7 @@ async function getFigmaData(
   params: GetFigmaDataParams,
   figmaService: FigmaService,
   outputFormat: "yaml" | "json",
-  outputPlatform: OutputPlatform,
+  serverOutputPlatform: OutputPlatform,
   transport: Transport,
   authMode: AuthMode,
   clientInfo: ClientInfo | undefined,
@@ -61,7 +68,7 @@ async function getFigmaData(
   skills?: Skill[],
 ) {
   try {
-    const { fileKey, nodeId: rawNodeId, depth, includePreview } = parametersSchema.parse(params);
+    const { fileKey, nodeId: rawNodeId, depth, includePreview, outputPlatform } = parametersSchema.parse(params);
 
     // Replace - with : in nodeId for our query — Figma API expects :.
     // MCP-specific input quirk, so it lives here rather than in the shared core.
@@ -76,7 +83,9 @@ async function getFigmaData(
     let stopFetchHeartbeat: (() => Promise<void>) | undefined;
     let stopSimplifyHeartbeat: (() => Promise<void>) | undefined;
 
-    const result = await runGetFigmaData(figmaService, { fileKey, nodeId, depth }, outputFormat, outputPlatform, {
+    const effectivePlatform = outputPlatform ?? serverOutputPlatform;
+
+    const result = await runGetFigmaData(figmaService, { fileKey, nodeId, depth }, outputFormat, effectivePlatform, {
       onFetchStart: async () => {
         await sendProgress(extra, 0, 3, "Fetching design data from Figma API");
         stopFetchHeartbeat = startProgressHeartbeat(extra, "Waiting for Figma API response");

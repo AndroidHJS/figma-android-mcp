@@ -95,9 +95,42 @@ Compose → ✅ 父容器不设固定高度，用默认 wrapContentHeight() 或 
 
 - ❌ 在 Column/Row 子项上用 \`Modifier.absoluteOffset()\` 推开元素 → ✅ 用 \`Arrangement.spacedBy()\` 统一控制，或在子项之间插入 \`Spacer\`
 
+### Column/Row + Spacer 伪装绝对定位（Compose 专属，高发）
+
+当父容器 mode 为 \`"none"\`（非 AutoLayout），子元素的偏移数据是精确的绝对坐标（\`offset.x\` / \`offset.y\`），却被塞进 Column/Row 用 Spacer 间距来"逼近"。
+
+- ❌ parent mode="none" 的子元素塞进 Column，用 \`Spacer(height = N.dp)\` 模拟 \`marginTop\`
+- ✅ 用 Box + \`Modifier.offset(x = Xdp, y = Ydp)\`，offset 值直接取自节点的 offset.x / offset.y 字段。绝对坐标不用"近似"。
+
+### ContentScale.Fit 误用到 Figma 切图（Compose 专属，高发）
+
+对已下载的 Figma PNG 切图使用 ContentScale.Fit。
+
+- ❌ \`Image(painter, Modifier.size(W.dp, H.dp), contentScale = ContentScale.Fit)\`
+- ✅ \`ContentScale.FillBounds\` — Figma 切图是渲染好的 PNG，需填满目标尺寸（对应 View 的 \`scaleType="fitXY"\`）
+
+### FontWeight.SemiBold 替代 Bold（Compose 专属）
+
+设计稿标注 bold 时使用 SemiBold(600)。
+
+- ❌ textStyle 含 "bold" → \`FontWeight.SemiBold\`
+- ✅ textStyle 含 "bold" → \`FontWeight.Bold\` (weight = 700)
+
+### Brush.horizontalGradient endX 无依据压缩（Compose 专属）
+
+无 Figma gradientTransform 数据时将 endX 设为 0.44f 或其它非 1f 的值。
+
+- ❌ \`Brush.horizontalGradient(..., endX = 0.44f)\` 无 transform 数据支撑
+- ✅ 未提供 gradientTransform 数据时，默认使用 \`startX = 0f, endX = 1f\`（全宽渐变）
+
 ## 写完后自检（强制，单端各跑一次）
 
 - Compose：搜 \\\`Modifier\\.(width|size)\\(\\s*\\d+(?:\\.\\d+)?\\.dp\\\`，逐处核对是否落在白名单
+- Compose 额外检查：
+  - 搜 \`ContentScale\.Fit\` → 全部核对，Figma 切图应使用 \`ContentScale.FillBounds\`
+  - 搜 \`FontWeight\.SemiBold\` → 核对是否应为 \`FontWeight.Bold\`
+  - 搜 \`endX\\s*=\\s*[01]?\\.\\d+f\` → 除 0f 和 1f 外需有 gradientTransform 数据支撑
+  - 搜 \`Column.*\\n.*Spacer\` 模式 → 若父容器 mode="none"，应改为 \`Box\` + \`Modifier.offset()\`
 - View：grep \\\`layout_width="\\d+dp"\\\`，逐处核对是否落在白名单
 
 不落白名单的，必须按上面表格重写。
