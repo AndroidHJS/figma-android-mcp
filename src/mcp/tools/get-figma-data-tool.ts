@@ -47,9 +47,8 @@ const parameters = {
   outputPlatform: z
     .enum(["compose", "views"])
     .optional()
-    .default("compose")
     .describe(
-      "Output platform style: \"compose\" for Jetpack Compose layout fields, \"views\" for traditional Android Views layout fields. Defaults to \"compose\".",
+      "Output platform style: \"compose\" for Jetpack Compose layout fields, \"views\" for traditional Android Views layout fields. Falls back to the server-level --output-platform setting when omitted.",
     ),
 };
 
