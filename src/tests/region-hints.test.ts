@@ -361,3 +361,131 @@ test("no hint when fewer than 2 eligible children", () => {
   const hints = generateRegionHints([parent], globalVars);
   expect(hints).toHaveLength(0);
 });
+
+// ============================================================================
+// Test 11: Full containment → stack region
+// ============================================================================
+test("full containment produces stack region", () => {
+  const globalVars: GlobalVars = { styles: {} };
+
+  // Card fully contains Content (overlap ratio = 100%)
+  const card = childNode("card", "Card", 0, 0, 360, 120, globalVars);
+  const content = childNode("content", "Content", 16, 16, 328, 88, globalVars);
+  // Footer is unrelated — needed to produce regions.length >= 2
+  const footer = childNode("footer", "Footer", 0, 140, 360, 56, globalVars);
+
+  const parentLayout = makeLayout({ mode: "none" });
+  const parentKey = register(globalVars, parentLayout);
+  const parent = makeNode({
+    id: "p1",
+    name: "Screen",
+    type: "FRAME",
+    layout: parentKey,
+    children: [card, content, footer],
+  });
+
+  const hints = generateRegionHints([parent], globalVars);
+  expect(hints).toHaveLength(1);
+
+  const stack = hints[0].regions.find((r) => r.mode === "stack");
+  expect(stack).toBeDefined();
+  expect(stack!.childIds).toEqual(["card", "content"]);
+  expect(stack!.gap).toBeUndefined();
+
+  // footer becomes singleton (or column), and together with stack → 2 regions
+  expect(hints[0].regions.length).toBeGreaterThanOrEqual(2);
+});
+
+// ============================================================================
+// Test 12: Stack + column coexist
+// ============================================================================
+test("stack and column regions coexist", () => {
+  const globalVars: GlobalVars = { styles: {} };
+
+  // Two fully-overlapping nodes → stack
+  const bg = childNode("bg", "CardBg", 0, 0, 300, 100, globalVars);
+  const overlay = childNode("overlay", "CardOverlay", 0, 0, 300, 100, globalVars);
+
+  // Two vertically-stacked nodes below → column
+  const title = childNode("title", "Title", 0, 120, 300, 40, globalVars);
+  const body = childNode("body", "Body", 0, 168, 300, 40, globalVars);
+
+  const parentLayout = makeLayout({ mode: "none" });
+  const parentKey = register(globalVars, parentLayout);
+  const parent = makeNode({
+    id: "p1",
+    name: "Card",
+    type: "FRAME",
+    layout: parentKey,
+    children: [bg, overlay, title, body],
+  });
+
+  const hints = generateRegionHints([parent], globalVars);
+  expect(hints).toHaveLength(1);
+  expect(hints[0].regions).toHaveLength(2);
+
+  const stack = hints[0].regions.find((r) => r.mode === "stack");
+  expect(stack).toBeDefined();
+  expect(stack!.childIds).toEqual(["bg", "overlay"]);
+
+  const col = hints[0].regions.find((r) => r.mode === "column");
+  expect(col).toBeDefined();
+  expect(col!.childIds).toEqual(["title", "body"]);
+});
+
+// ============================================================================
+// Test 13: Micro-overlap below threshold → not a stack
+// ============================================================================
+test("micro-overlap below threshold is not treated as stack", () => {
+  const globalVars: GlobalVars = { styles: {} };
+
+  // RowA bottom bleeds 2dp into RowB top: overlap=360×2=720, min_area=360×44=15840, ratio≈4.5%
+  const rowA = childNode("a", "RowA", 0, 0, 360, 44, globalVars);
+  const rowB = childNode("b", "RowB", 0, 42, 360, 44, globalVars);
+
+  const parentLayout = makeLayout({ mode: "none" });
+  const parentKey = register(globalVars, parentLayout);
+  const parent = makeNode({
+    id: "p1",
+    name: "List",
+    type: "FRAME",
+    layout: parentKey,
+    children: [rowA, rowB],
+  });
+
+  const hints = generateRegionHints([parent], globalVars);
+  // No stack region should be produced
+  const allRegions = hints.flatMap((h) => h.regions);
+  expect(allRegions.every((r) => r.mode !== "stack")).toBe(true);
+});
+
+// ============================================================================
+// Test 14: Zero-size element (missing dimensions) → no crash, no stack
+// ============================================================================
+test("zero-size element does not crash and is not stacked", () => {
+  const globalVars: GlobalVars = { styles: {} };
+
+  // NodeA has no dimensions → width=0, height=0
+  const nodeA = childNode("a", "Ghost", 0, 0, 0, 0, globalVars);
+  const nodeB = childNode("b", "Real", 0, 0, 300, 100, globalVars);
+  // Third node to allow regions.length >= 2 if a hint were emitted
+  const nodeC = childNode("c", "Other", 0, 120, 300, 40, globalVars);
+
+  const parentLayout = makeLayout({ mode: "none" });
+  const parentKey = register(globalVars, parentLayout);
+  const parent = makeNode({
+    id: "p1",
+    name: "Frame",
+    type: "FRAME",
+    layout: parentKey,
+    children: [nodeA, nodeB, nodeC],
+  });
+
+  // Must not throw
+  expect(() => generateRegionHints([parent], globalVars)).not.toThrow();
+
+  const hints = generateRegionHints([parent], globalVars);
+  const allRegions = hints.flatMap((h) => h.regions);
+  // Zero-size nodeA cannot form a significant overlap with anything
+  expect(allRegions.every((r) => r.mode !== "stack")).toBe(true);
+});

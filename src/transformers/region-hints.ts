@@ -8,12 +8,21 @@ import {
 } from "~/transformers/layout.js";
 import type { ChildLayoutData } from "~/transformers/layout.js";
 
+/**
+ * Minimum ratio of overlap area to the LARGER element's area to be treated as intentional stacking.
+ * Using max_area (not min_area) prevents false positives when two wide side-by-side elements
+ * happen to share horizontal space (e.g. a 300dp item at x=0 alongside a 120dp item at x=200).
+ * At 0.5, only genuine containment — where the inner element covers ≥50% of the container —
+ * is flagged as a stack.
+ */
+const STACK_OVERLAP_THRESHOLD = 0.5;
+
 export interface RegionGroup {
   /** Omitted for singleton (single-child area, no container suggestion needed). */
-  mode?: "column" | "row";
+  mode?: "column" | "row" | "stack";
   childIds: string[];
   childNames: string[];
-  /** Uniform gap for multi-child area, undefined when inconsistent. */
+  /** Uniform gap for multi-child area, undefined when inconsistent. Not set for stack regions. */
   gap?: string;
 }
 
@@ -67,34 +76,43 @@ function processParent(parent: SimplifiedNode, globalVars: GlobalVars): RegionHi
   const eligible = collectEligible(parent.children!, globalVars);
   if (eligible.length < 2) return null;
 
-  const assigned = new Set<number>();
+  const assigned = new Set<ChildDatum>();
   const regions: RegionGroup[] = [];
 
+  // Step B.5: detect deliberate z-order stacking before column/row grouping
+  const stackGroups = buildStackGroups(eligible);
+  for (const group of stackGroups) {
+    for (const d of group) assigned.add(d);
+    regions.push({
+      mode: "stack",
+      childIds: group.map((d) => d.node.id),
+      childNames: group.map((d) => d.node.name),
+    });
+  }
+
   // Step C: anchor grouping by x → Column candidates
-  const xGroups = groupByAlignment(eligible, "x");
+  const xGroups = groupByAlignment(eligible.filter((d) => !assigned.has(d)), "x");
   for (const group of xGroups) {
     if (group.length < 2) continue;
     const sorted = [...group].sort((a, b) => a.y - b.y);
     if (hasOverlap(sorted, "column")) continue;
-    for (const d of group) assigned.add(eligible.indexOf(d));
+    for (const d of group) assigned.add(d);
     regions.push(buildFlowRegion(sorted, "column"));
   }
 
   // Step D: anchor grouping by y → Row candidates (unassigned only)
-  const unassigned = eligible.filter((_, i) => !assigned.has(i));
-  const yGroups = groupByAlignment(unassigned, "y");
+  const yGroups = groupByAlignment(eligible.filter((d) => !assigned.has(d)), "y");
   for (const group of yGroups) {
     if (group.length < 2) continue;
     const sorted = [...group].sort((a, b) => a.x - b.x);
     if (hasOverlap(sorted, "row")) continue;
-    for (const d of group) assigned.add(eligible.indexOf(d));
+    for (const d of group) assigned.add(d);
     regions.push(buildFlowRegion(sorted, "row"));
   }
 
   // Step E: remaining unassigned → singletons
-  for (let i = 0; i < eligible.length; i++) {
-    if (!assigned.has(i)) {
-      const d = eligible[i];
+  for (const d of eligible) {
+    if (!assigned.has(d)) {
       regions.push({
         childIds: [d.node.id],
         childNames: [d.node.name],
@@ -158,6 +176,42 @@ function groupByAlignment(
   return groups;
 }
 
+function overlapArea(a: ChildDatum, b: ChildDatum): number {
+  const dx = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+  const dy = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+  return dx > 0 && dy > 0 ? dx * dy : 0;
+}
+
+function isSignificantOverlap(a: ChildDatum, b: ChildDatum): boolean {
+  const area = overlapArea(a, b);
+  if (area <= 0) return false;
+  const larger = Math.max(a.width * a.height, b.width * b.height);
+  return larger > 0 && area / larger > STACK_OVERLAP_THRESHOLD;
+}
+
+/** Union-find connected components for overlapping child nodes. */
+function buildStackGroups(eligible: ChildDatum[]): ChildDatum[][] {
+  const parent = eligible.map((_, i) => i);
+  const find = (x: number): number =>
+    parent[x] === x ? x : (parent[x] = find(parent[x]));
+  const union = (x: number, y: number) => { parent[find(x)] = find(y); };
+
+  for (let i = 0; i < eligible.length; i++)
+    for (let j = i + 1; j < eligible.length; j++)
+      if (isSignificantOverlap(eligible[i], eligible[j])) union(i, j);
+
+  const groups = new Map<number, number[]>();
+  for (let i = 0; i < eligible.length; i++) {
+    const root = find(i);
+    if (!groups.has(root)) groups.set(root, []);
+    groups.get(root)!.push(i);
+  }
+  // Only multi-node groups; preserve original array order (= Figma z-order).
+  return [...groups.values()]
+    .filter((g) => g.length >= 2)
+    .map((g) => g.map((i) => eligible[i]));
+}
+
 function hasOverlap(sorted: ChildDatum[], mode: "column" | "row"): boolean {
   for (let i = 0; i < sorted.length - 1; i++) {
     const curEnd =
@@ -187,6 +241,3 @@ function buildFlowRegion(group: ChildDatum[], mode: "column" | "row"): RegionGro
     gap,
   };
 }
-
-// Re-export for test visibility
-export { collectEligible };
