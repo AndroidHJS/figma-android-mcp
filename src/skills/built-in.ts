@@ -6,6 +6,8 @@ export const builtInSkills: Skill[] = [
     title: "Android 布局翻译规则（强制）",
     description: "Figma 设计 → Android 布局代码的强制翻译约束，含宽度响应式与未下载资源占位规则",
     category: "layout",
+    instructions: "生成 Android 布局代码（Compose 或传统 View）时触发。强制执行 Figma 到 Android 的布局翻译约束：宽度响应式、纯色占位、反模式检测。在写完任何 XML/Compose 布局代码前必须调用此技能。",
+    triggers: ["宽度响应式", "响应式布局"],
     content: `# 宽度响应式规则（强制，不允许偏离）
 
 Figma 数据里所有节点宽度都是固定 dp，**禁止字面翻译**。Android 设备宽度跨度大（320dp ~ 600dp+），字面翻译会在非基线设备上裁切或偏左堆积。
@@ -154,8 +156,10 @@ Figma 输出的 CSS 字符串含 \`radial-gradient(circle at 50% 50%, ...)\`—�
   {
     name: "figma-android-mcp-skill",
     title: "Figma → Android 还原流程",
-    description: "把 Figma 设计稿还原成 Android UI 代码（配合 figma-android-mcp 这个 MCP 服务使用）。触发场景——用户给出 Figma URL 或 fileKey:nodeId 并希望生成 Compose 或传统 View 还原代码，常见关键词：\"figma 还原 / figma 转代码 / 把这个设计稿做出来 / 用 Compose 还原这个 Figma / figma to code / 设计稿 还原\"。流程是先问是否需要截图对比，调用 get_figma_data 拿设计数据（与可选截图），把 imageAssets 按 category 分两组并询问下载策略，调用 download_figma_images 拉资源，最后按规范生成对照代码。",
+    description: "当用户提出\"需要效果图对比\"或\"提高还原度\"时触发。流程：解析 Figma URL → 询问是否截图对比 → 获取设计数据与 2x PNG 截图 → 分两组处理 imageAssets 并询问下载策略 → 下载资源 → 对照截图做视觉校验并按规范生成 Compose / 传统 View 代码。仅当用户明确要求效果图对比或高还原度时才调用此技能。",
     category: "workflow",
+    instructions: "仅当用户明确提出需要\"效果图对比\"、\"截图对比\"或\"高还原度\"时触发。如果用户只是要拿设计数据/提取尺寸/看结构，不要触发。流程包含 7 步：解析输入 → 检查模型图片支持 → 询问截图对比 → 获取设计数据 → 分组并下载图片资源 → 对照截图生成代码。",
+    triggers: ["效果图对比", "截图对比", "设计稿高还原"],
     content: `# figma-android-mcp-skill
 
 这个 skill 标准化"Figma → Android 代码"的还原流程。**严格按以下步骤执行**，不要省略问询、不要替用户做选择。

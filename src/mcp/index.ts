@@ -115,7 +115,7 @@ function registerTools(
       inputSchema: getSkillTool.parametersSchema,
       annotations: { readOnlyHint: true },
     },
-    (params: { name: string }) =>
+    (params: { name?: string }) =>
       getSkillTool.handler(params, options.skills),
   );
 
