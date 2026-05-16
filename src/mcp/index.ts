@@ -20,7 +20,7 @@ const serverInfo = {
   name: "Figma MCP Server",
   version: process.env.NPM_PACKAGE_VERSION ?? "unknown",
   description:
-    "Gives AI coding agents access to Figma design data, providing layout, styling, and content information for implementing designs.",
+    "When a Figma link is provided and the user asks to generate UI code, use this server. Call `get_figma_data` to fetch design data directly. Only when the user explicitly requests high-fidelity restoration or effect comparison (高还原 / 效果图对比), call `get_skill(\"figma-android-mcp-skill\")` to activate the full 7-step workflow.",
 };
 
 type ServerTransport = Extract<Transport, "stdio" | "http">;
@@ -38,7 +38,10 @@ function createServer(
   authOptions: FigmaAuthOptions,
   { transport, outputFormat = "yaml", outputPlatform = "compose", skipImageDownloads = false, imageDir, skillsDir }: CreateServerOptions,
 ) {
-  const server = new McpServer(serverInfo);
+  const server = new McpServer(serverInfo, {
+    instructions:
+      "Call `get_skill` without a name to discover available skills and their triggers. Use `get_figma_data` for normal Figma→UI tasks. Use `get_skill(\"figma-android-mcp-skill\")` only for high-fidelity restoration with effect comparison (效果图对比/高还原). Use `get_skill(\"android-layout\")` for layout constraints when writing Android code.",
+  });
   const figmaService = new FigmaService(authOptions);
   const mode = authMode(authOptions);
   const skills = loadSkills(skillsDir);

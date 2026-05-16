@@ -3,16 +3,16 @@ import type { Skill } from "./types.js";
 export const builtInSkills: Skill[] = [
   {
     name: "android-layout",
-    title: "Android 布局翻译规则（强制）",
-    description: "Figma 设计 → Android 布局代码的强制翻译约束，含宽度响应式与未下载资源占位规则",
+    title: "Android 布局规则（强制）",
+    description: "Figma 设计 → Android 布局代码的强制约束，含宽度响应式与未下载资源占位规则",
     category: "layout",
-    instructions: "生成 Android 布局代码（Compose 或传统 View）时触发。强制执行 Figma 到 Android 的布局翻译约束：宽度响应式、纯色占位、反模式检测。在写完任何 XML/Compose 布局代码前必须调用此技能。",
+    instructions: "生成 Android 布局代码（Compose 或传统 View）时触发。强制执行 Figma 到 Android 的布局约束：宽度响应式、纯色占位、反模式检测。在写完任何 XML/Compose 布局代码前必须调用此技能。",
     triggers: ["宽度响应式", "响应式布局"],
     content: `# 宽度响应式规则（强制，不允许偏离）
 
 Figma 数据里所有节点宽度都是固定 dp，**禁止字面翻译**。Android 设备宽度跨度大（320dp ~ 600dp+），字面翻译会在非基线设备上裁切或偏左堆积。
 
-## 翻译规则
+## 布局规则
 
 | 场景判定 | 原则 | Compose | 传统 View |
 |---------|------|---------|----------|
@@ -156,10 +156,10 @@ Figma 输出的 CSS 字符串含 \`radial-gradient(circle at 50% 50%, ...)\`—�
   {
     name: "figma-android-mcp-skill",
     title: "Figma → Android 还原流程",
-    description: "当用户提出\"需要效果图对比\"或\"提高还原度\"时触发。流程：解析 Figma URL → 询问是否截图对比 → 获取设计数据与 2x PNG 截图 → 分两组处理 imageAssets 并询问下载策略 → 下载资源 → 对照截图做视觉校验并按规范生成 Compose / 传统 View 代码。仅当用户明确要求效果图对比或高还原度时才调用此技能。",
+    description: "当用户提出\"需要效果图对比\"或\"提高还原度\"时触发。流程：解析 Figma URL → 询问是否效果图对比 → 获取设计数据 → 分两组处理 imageAssets 并询问下载策略 → 下载资源 → 对照效果图做视觉校验并按规范生成 Compose / 传统 View 代码。仅当用户明确要求效果图对比或高还原度时才调用此技能。",
     category: "workflow",
-    instructions: "仅当用户明确提出需要\"效果图对比\"、\"截图对比\"或\"高还原度\"时触发。如果用户只是要拿设计数据/提取尺寸/看结构，不要触发。流程包含 7 步：解析输入 → 检查模型图片支持 → 询问截图对比 → 获取设计数据 → 分组并下载图片资源 → 对照截图生成代码。",
-    triggers: ["效果图对比", "截图对比", "设计稿高还原"],
+    instructions: "当用户提出\"效果图对比\"、\"效果图对比\"或\"高还原度\"时触发。流程包含 7 步：解析输入 → 检查模型图片支持 → 询问效果图对比 → 获取设计数据 → 分组并下载图片资源 → 对照效果图生成代码。",
+    triggers: ["效果图对比", "效果图对比", "设计稿高还原"],
     content: `# figma-android-mcp-skill
 
 这个 skill 标准化"Figma → Android 代码"的还原流程。**严格按以下步骤执行**，不要省略问询、不要替用户做选择。
@@ -181,18 +181,18 @@ Figma 输出的 CSS 字符串含 \`radial-gradient(circle at 50% 50%, ...)\`—�
 
 自省：你能否处理/查看图片（image input / multimodal）？
 
-- **如果不支持图片输入**：输出一句话 \`当前模型不支持图片输入，跳过截图，直接使用设计数据生成代码。\`，设 \`needPreview = false\`，**跳过步骤 2**，直奔步骤 3。
+- **如果不支持图片输入**：输出一句话 \`当前模型不支持图片输入，跳过效果图，直接使用设计数据生成代码。\`，设 \`needPreview = false\`，**跳过步骤 2**，直奔步骤 3。
 - **如果支持图片输入**：继续步骤 2，正常询问用户。
 
-### 步骤 2：问"是否需要截图对比"
+### 步骤 2：问"是否需要效果图对比"
 
 调用 **AskUserQuestion** 工具，问题如下：
 
-- question: \`这一份还原需要截图对比吗？\`
-- header: \`截图对比\`
+- question: \`这一份还原需要效果图对比吗？\`
+- header: \`效果图对比\`
 - options:
-  - label: \`需要（推荐做 UI 还原时开启）\`，description: \`获取设计稿 2x PNG 截图。AI 在生成代码时会对照截图做视觉校验和修正，提升像素级还原度。增加约 1-2 秒耗时。\`
-  - label: \`不需要\`，description: \`跳过截图，只拿结构化设计数据。适合只看元数据 / 提取尺寸 / 探索结构，不要求视觉还原。\`
+  - label: \`不需要\`，description: \`跳过效果图。\`
+  - label: \`需要（推荐做 UI 还原时开启）\`，description: \`获取设计稿。AI 在生成代码时会对照效果图做视觉校验和修正，提升像素级还原度。增加约 1-2 秒耗时。\`
 
 把用户选择记为 \`needPreview: boolean\`。
 
@@ -210,7 +210,7 @@ Figma 输出的 CSS 字符串含 \`radial-gradient(circle at 50% 50%, ...)\`—�
 
 从响应里拿到 \`imageAssets\` 数组和设计数据。
 
-**如果 \`needPreview === true\`**：MCP 响应中除了设计数据文本，还包含一张**内联渲染的 PNG 截图**（跟在设计数据文本块后面）。你能看到这张截图。在后续步骤 7 生成代码前，先观察截图中的整体布局、元素位置、颜色分布和文字区域——这些视觉信息是结构化数据无法完全传达的。
+**如果 \`needPreview === true\`**：MCP 响应中除了设计数据文本，还包含一张**内联渲染的 PNG 效果图**（跟在设计数据文本块后面）。你能看到这张效果图。在后续步骤 7 生成代码前，先观察效果图中的整体布局、元素位置、颜色分布和文字区域——这些视觉信息是结构化数据无法完全传达的。
 
 ### 步骤 4：按 \`category\` 把资源分两组
 
@@ -275,11 +275,11 @@ const otherAssets = imageAssets.filter(a => a.category === "auto-detected");
 
 #### 若 \`needPreview === true\`：生成前先做视觉分析
 
-在写任何代码之前，**必须先把截图按视觉边界划分成独立区域**。不要跳过这一步——这是决定容器嵌套结构的依据。
+在写任何代码之前，**必须先把效果图按视觉边界划分成独立区域**。不要跳过这一步——这是决定容器嵌套结构的依据。
 
 ##### 分区域规则
 
-1. 找到截图中的**明显视觉分隔线**（色块边界、间距突变、背景变化）
+1. 找到效果图中的**明显视觉分隔线**（色块边界、间距突变、背景变化）
 2. 从上到下把页面切成独立区域（如：顶栏区 → Banner 区 → 步骤区 → 产品列表区 → 订单区）
 3. 对**每个区域**回答以下问题：
 
@@ -299,7 +299,7 @@ const otherAssets = imageAssets.filter(a => a.category === "auto-detected");
    - **有重叠** → 必须用 \`FrameLayout\`（子元素需要绝对定位来叠加）
    - **无重叠** → 用 \`LinearLayout\`(vertical/horizontal) 或 \`ConstraintLayout\`，**禁止**用 FrameLayout + 硬编码 marginTop/marginStart 来间隔
 
-然后结合设计数据的 \`layoutHints\`、\`layout\`、\`arrangement\`、\`alignment\` 字段，用截图做**交叉验证**。冲突时：排版以截图为准；外观/文本属性以 Figma 导出数据为准。
+然后结合设计数据的 \`layoutHints\`、\`layout\`、\`arrangement\`、\`alignment\` 字段，用效果图做**交叉验证**。冲突时：排版以效果图为准；外观/文本属性以 Figma 导出数据为准。
 
 #### 容器选择规则（强制）
 
@@ -346,9 +346,9 @@ const otherAssets = imageAssets.filter(a => a.category === "auto-detected");
    - 搜 \`Column.*\\n.*Spacer\` 组合 → 若父容器 mode="none"（绝对定位），改用 \`Box\` + \`Modifier.offset()\`。
    - 搜 \`Modifier\\.offset\(\` → 确认 offset 值直接取自节点数据的 offset.x / offset.y，非人工推算。
 
-1. **排版**：根据 \`layout\` / \`arrangement\` / \`alignment\` / \`spacing\` / \`width\` / \`height\`（或传统 View 的 \`orientation\` / \`gravity\` / \`layout_width\` / \`layout_height\`）搭骨架。优先用 get_figma_data 返回的 \`layoutHints\` 决定 Column/Row/Box 还是 ConstraintLayout。**对照截图确认容器嵌套层次和排列方向与视觉一致，若截图与数据矛盾，以截图为准。**
-2. **外观**：fills（含颜色 hex）、strokes、cornerRadius、effects（阴影 / 模糊）。**以 Figma 导出数据为准**——颜色值、描边粗细、圆角半径、阴影参数都是精确数值，截图可能因渲染/压缩产生偏差。
-3. **文本**：内容、字体、字号（sp）、字重、颜色、行高。**以 Figma 导出数据为准**——这些是精确的结构化属性，截图可能因渲染产生偏差。
+1. **排版**：根据 \`layout\` / \`arrangement\` / \`alignment\` / \`spacing\` / \`width\` / \`height\`（或传统 View 的 \`orientation\` / \`gravity\` / \`layout_width\` / \`layout_height\`）搭骨架。优先用 get_figma_data 返回的 \`layoutHints\` 决定 Column/Row/Box 还是 ConstraintLayout。**对照效果图确认容器嵌套层次和排列方向与视觉一致，若效果图与数据矛盾，以效果图为准。**
+2. **外观**：fills（含颜色 hex）、strokes、cornerRadius、effects（阴影 / 模糊）。**以 Figma 导出数据为准**——颜色值、描边粗细、圆角半径、阴影参数都是精确数值，效果图可能因渲染/压缩产生偏差。
+3. **文本**：内容、字体、字号（sp）、字重、颜色、行高。**以 Figma 导出数据为准**——这些是精确的结构化属性，效果图可能因渲染产生偏差。
 4. **组件状态**：variants 直接映射为 sealed class / enum 状态参数。
 
 
@@ -377,15 +377,15 @@ const otherAssets = imageAssets.filter(a => a.category === "auto-detected");
 
 #### 若 \`needPreview === true\`：生成后自检并修正
 
-代码写完后，**你自己**对照截图逐项过一遍已生成的代码。**逐项检查、逐项打勾**，不要跳过：
+代码写完后，**你自己**对照效果图逐项过一遍已生成的代码。**逐项检查、逐项打勾**，不要跳过：
 
-1. **z-order**：顶层元素声明顺序是否和截图视觉层级一致（后声明的在上面）？有无被意外覆盖的元素？
+1. **z-order**：顶层元素声明顺序是否和效果图视觉层级一致（后声明的在上面）？有无被意外覆盖的元素？
 2. **裁剪**：有没有子元素尺寸超过父容器导致被裁剪？父容器高度是否 ≥ 最大子元素的 bottom 坐标？
 3. **重叠**：有没有非预期的元素重叠（本应分开的独立区域互相覆盖）？
-4. **间距**：margin、padding、spacing 是否与截图中的视觉间距匹配？有没有"挤在一起"或"太松散"的偏差？
-5. **颜色**：背景色、文字色、描边色是否与截图中对应位置的颜色一致？（以 Figma 数据为准）
-6. **字体**：各文本节点的字号（sp）、字重、行高是否与截图的视觉层级吻合？（以 Figma 数据为准）
-7. **对齐**：文字和图标在容器内的对齐方向（左/中/右，上/中/下）是否与截图一致？
+4. **间距**：margin、padding、spacing 是否与效果图中的视觉间距匹配？有没有"挤在一起"或"太松散"的偏差？
+5. **颜色**：背景色、文字色、描边色是否与效果图中对应位置的颜色一致？（以 Figma 数据为准）
+6. **字体**：各文本节点的字号（sp）、字重、行高是否与效果图的视觉层级吻合？（以 Figma 数据为准）
+7. **对齐**：文字和图标在容器内的对齐方向（左/中/右，上/中/下）是否与效果图一致？
 
 **发现偏差就直接改代码**，不要输出"建议修改"——你就是代码的作者，直接修正。修正完后再交付最终代码。
 
