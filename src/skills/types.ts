@@ -7,6 +7,10 @@ export interface SkillMeta {
   description: string;
   /** Optional grouping category */
   category?: string;
+  /** Short trigger guidance for AI agents — when to use this skill (1-2 sentences) */
+  instructions?: string;
+  /** Trigger keywords/phrases that map to this skill */
+  triggers?: string[];
 }
 
 export interface Skill extends SkillMeta {

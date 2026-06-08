@@ -32,6 +32,8 @@ function parseMarkdownSkill(filePath: string): Skill {
     title: frontmatter.title,
     description: frontmatter.description,
     category: typeof frontmatter.category === "string" ? frontmatter.category : undefined,
+    instructions: typeof frontmatter.instructions === "string" ? frontmatter.instructions : undefined,
+    triggers: Array.isArray(frontmatter.triggers) ? frontmatter.triggers.filter((t: unknown): t is string => typeof t === "string") : undefined,
     content,
   };
 }
@@ -75,10 +77,12 @@ export function loadSkills(customDir?: string): Skill[] {
 
 /** Returns a listing-friendly subset — no content, just metadata. */
 export function toSkillList(skills: Skill[]): SkillMeta[] {
-  return skills.map(({ name, title, description, category }) => ({
+  return skills.map(({ name, title, description, category, instructions, triggers }) => ({
     name,
     title,
     description,
     category,
+    instructions,
+    triggers,
   }));
 }
