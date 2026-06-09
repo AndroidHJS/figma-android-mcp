@@ -765,27 +765,21 @@ async function processFrame(
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch a Figma SECTION node, extract all child FRAMEs, cluster them into
- * page groups via naming + structural analysis, and produce a combined
- * output that helps the AI generate the correct number of pages.
- *
- * Only ONE Figma API call is made — the SECTION subtree is fetched once.
+ * Process an already-fetched SECTION node response. Accepts pre-loaded raw
+ * data so callers that already have the response (e.g. get_figma_node router)
+ * can avoid a second API round-trip.
  */
-export async function getFigmaSection(
-  figmaService: FigmaService,
+export async function getFigmaSectionFromRaw(
+  apiResponse: GetFileNodesResponse,
   input: GetFigmaSectionInput,
   outputFormat: "yaml" | "json",
   outputPlatform: Platform,
   skills?: Skill[],
 ): Promise<GetFigmaSectionResult> {
-  const { fileKey, sectionNodeId, depth } = input;
-
-  // 1. Fetch the SECTION node — single API call
-  const rawResult = await figmaService.getRawNode(fileKey, sectionNodeId, depth);
-  const apiResponse = rawResult.data as GetFileNodesResponse;
+  const { sectionNodeId, depth } = input;
   writeLogs("figma-section-raw.json", apiResponse);
 
-  // 2. Validate the root node is a SECTION
+  // Validate the root node is a SECTION
   const sectionEntry = Object.entries(apiResponse.nodes)[0];
   if (!sectionEntry || !sectionEntry[1]) {
     throw new Error(
@@ -962,4 +956,23 @@ export async function getFigmaSection(
   }
 
   return { formatted: output };
+}
+
+/**
+ * Fetch a Figma SECTION node, extract all child FRAMEs, cluster them into
+ * page groups via naming + structural analysis, and produce a combined
+ * output that helps the AI generate the correct number of pages.
+ *
+ * Only ONE Figma API call is made — the SECTION subtree is fetched once.
+ */
+export async function getFigmaSection(
+  figmaService: FigmaService,
+  input: GetFigmaSectionInput,
+  outputFormat: "yaml" | "json",
+  outputPlatform: Platform,
+  skills?: Skill[],
+): Promise<GetFigmaSectionResult> {
+  const { fileKey, sectionNodeId, depth } = input;
+  const rawResult = await figmaService.getRawNode(fileKey, sectionNodeId, depth);
+  return getFigmaSectionFromRaw(rawResult.data as GetFileNodesResponse, input, outputFormat, outputPlatform, skills);
 }

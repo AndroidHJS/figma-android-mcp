@@ -213,21 +213,26 @@ Figma 输出的 CSS 字符串含 \`radial-gradient(circle at 50% 50%, ...)\`—�
 
 把用户选择记为 \`needPreview: boolean\`。
 
-### 步骤 3：调用 \`get_figma_data\`
+### 步骤 3：调用 \`get_figma_node\`
 
-调用 MCP 工具 \`get_figma_data\`，传：
+调用 MCP 工具 \`get_figma_node\`，传：
 
 \`\`\`json
 {
   "fileKey": "<解析出的 fileKey>",
-  "nodeId": "<可选 nodeId，没有就不传>",
+  "nodeId": "<nodeId，必填>",
   "includePreview": <needPreview>
 }
 \`\`\`
 
 从响应里拿到 \`imageAssets\` 数组和设计数据。
 
-**如果 \`needPreview === true\`**：MCP 响应中除了设计数据文本，还包含一张**内联渲染的 PNG 效果图**（跟在设计数据文本块后面）。你能看到这张效果图。在后续步骤 7 生成代码前，先观察效果图中的整体布局、元素位置、颜色分布和文字区域——这些视觉信息是结构化数据无法完全传达的。
+**如果 \`needPreview === true\`**：
+
+- **FRAME / COMPONENT 节点**：MCP 响应中除了设计数据文本，还包含一张**内联渲染的 PNG 效果图**（跟在设计数据文本块后面）。
+- **SECTION 节点（多状态/多页面）**：MCP 响应中包含 N 张效果图，每张前有标签 \`--- 帧 <frameId> 效果图 ---\`，各图对应一个直接子 Frame。
+
+你能看到这些效果图。在后续步骤 7 生成代码前，先观察效果图中的整体布局、元素位置、颜色分布和文字区域——这些视觉信息是结构化数据无法完全传达的。
 
 ### 步骤 4：按 \`category\` 把资源分两组
 
@@ -291,6 +296,8 @@ const otherAssets = imageAssets.filter(a => a.category === "auto-detected");
 按以下顺序写代码：
 
 #### 若 \`needPreview === true\`：生成前先做视觉分析
+
+**多帧处理（SECTION 节点）**：若响应中包含多张效果图，每张前有标签 \`--- 帧 <frameId> 效果图 ---\`，各图对应一个 Frame 状态。按以下顺序处理：先完整读取所有效果图建立页面/状态的整体认知，再为每个 Frame 状态分别做下方的视觉分析，最后生成对应状态的代码。
 
 在写任何代码之前，**必须先把效果图按视觉边界划分成独立区域**。不要跳过这一步——这是决定容器嵌套结构的依据。
 

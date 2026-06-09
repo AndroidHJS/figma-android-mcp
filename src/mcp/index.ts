@@ -9,10 +9,12 @@ import {
   downloadFigmaImagesTool,
   getFigmaDataTool,
   getFigmaSectionTool,
+  getFigmaNodeTool,
   getSkillTool,
   type DownloadImagesParams,
   type GetFigmaDataParams,
   type GetFigmaSectionParams,
+  type GetFigmaNodeParams,
 } from "./tools/index.js";
 import { registerSkillResources } from "./resources/skills-resource.js";
 import { loadSkills } from "../skills/index.js";
@@ -42,7 +44,7 @@ function createServer(
 ) {
   const server = new McpServer(serverInfo, {
     instructions:
-      "Call `get_skill` without a name to discover available skills and their triggers. Use `get_figma_data` for normal Figma→UI tasks. Use `get_skill(\"figma-android-mcp-skill\")` only for high-fidelity restoration with effect comparison (效果图对比/高还原). Use `get_skill(\"android-layout\")` for layout constraints when writing Android code.",
+      "Call `get_skill` without a name to discover available skills and their triggers. Use `get_figma_node` for all Figma URL inputs — it auto-detects node type and routes FRAME/COMPONENT links to standard data extraction and SECTION links (multiple UI states) to multi-state frame analysis. `get_figma_data` and `get_figma_section` remain available for explicit use. Use `get_skill(\"figma-android-mcp-skill\")` only for high-fidelity restoration with effect comparison (效果图对比/高还原). Use `get_skill(\"android-layout\")` for layout constraints when writing Android code.",
   });
   const figmaService = new FigmaService(authOptions);
   const mode = authMode(authOptions);
@@ -100,6 +102,28 @@ function registerTools(
     },
     (params: GetFigmaDataParams, extra: ToolExtra) =>
       getFigmaDataTool.handler(
+        params,
+        figmaService,
+        options.outputFormat,
+        options.outputPlatform,
+        options.transport,
+        options.authMode,
+        options.getClientInfo(),
+        extra,
+        options.skills,
+      ),
+  );
+
+  server.registerTool(
+    getFigmaNodeTool.name,
+    {
+      title: "Get Figma Node (Auto-Route)",
+      description: getFigmaNodeTool.description,
+      inputSchema: getFigmaNodeTool.parametersSchema,
+      annotations: { readOnlyHint: true },
+    },
+    (params: GetFigmaNodeParams, extra: ToolExtra) =>
+      getFigmaNodeTool.handler(
         params,
         figmaService,
         options.outputFormat,

@@ -72,6 +72,8 @@ export type GetFigmaDataInput = {
   fileKey: string;
   nodeId?: string;
   depth?: number;
+  /** Pre-fetched raw API response — skips the internal getRawNode/getRawFile call. */
+  preloadedRaw?: { data: GetFileResponse | GetFileNodesResponse; rawSize: number };
 };
 
 export type GetFigmaDataResult = {
@@ -141,7 +143,9 @@ export async function getFigmaData(
     let rawResult: { data: GetFileResponse | GetFileNodesResponse; rawSize: number };
     const fetchStart = Date.now();
     try {
-      if (nodeId) {
+      if (input.preloadedRaw) {
+        rawResult = input.preloadedRaw;
+      } else if (nodeId) {
         rawResult = await figmaService.getRawNode(fileKey, nodeId, depth);
       } else {
         rawResult = await figmaService.getRawFile(fileKey, depth);
