@@ -25,7 +25,7 @@ import { generateRegionHints } from "~/transformers/region-hints.js";
 
 export type { GetFigmaDataMetrics } from "~/services/get-figma-data-metrics.js";
 
-function generateLayoutHints(screen: { width: string; height: string }, platform: Platform): string[] {
+export function generateLayoutHints(screen: { width: string; height: string }, platform: Platform): string[] {
   const w = screen.width;
   const h = screen.height;
   const wNum = parseFloat(w);

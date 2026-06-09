@@ -8,9 +8,11 @@ import type { ToolExtra } from "./progress.js";
 import {
   downloadFigmaImagesTool,
   getFigmaDataTool,
+  getFigmaSectionTool,
   getSkillTool,
   type DownloadImagesParams,
   type GetFigmaDataParams,
+  type GetFigmaSectionParams,
 } from "./tools/index.js";
 import { registerSkillResources } from "./resources/skills-resource.js";
 import { loadSkills } from "../skills/index.js";
@@ -105,6 +107,25 @@ function registerTools(
         options.transport,
         options.authMode,
         options.getClientInfo(),
+        extra,
+        options.skills,
+      ),
+  );
+
+  server.registerTool(
+    getFigmaSectionTool.name,
+    {
+      title: "Get Figma Section",
+      description: getFigmaSectionTool.description,
+      inputSchema: getFigmaSectionTool.parametersSchema,
+      annotations: { readOnlyHint: true },
+    },
+    (params: GetFigmaSectionParams, extra: ToolExtra) =>
+      getFigmaSectionTool.handler(
+        params,
+        figmaService,
+        options.outputFormat,
+        options.outputPlatform,
         extra,
         options.skills,
       ),
