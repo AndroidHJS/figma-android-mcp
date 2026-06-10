@@ -694,17 +694,29 @@ function buildHeaderBlock(
 // ---------------------------------------------------------------------------
 
 /**
- * Collect direct FRAME children of a SECTION node.
- * Only returns immediate children whose type is "FRAME" — nested sections
- * are NOT recursed into; the caller can query them separately.
+ * Collect all FRAME descendants of a SECTION node, recursing into nested
+ * SECTIONs. Designers often group frames by page/feature inside child
+ * SECTIONs (e.g. "登录注册" → "登录页" → frames); a flat scan would miss
+ * every frame and fail with "no FRAME children".
  */
-function collectFrames(sectionNode: FigmaDocumentNode): FigmaDocumentNode[] {
+export function collectFrames(sectionNode: FigmaDocumentNode): FigmaDocumentNode[] {
   if (!("children" in sectionNode) || !Array.isArray((sectionNode as Record<string, unknown>).children)) {
     return [];
   }
 
+  const frames: FigmaDocumentNode[] = [];
   const children = (sectionNode as Record<string, unknown>).children as FigmaDocumentNode[];
-  return children.filter((child) => (child as Record<string, unknown>).type === "FRAME");
+
+  for (const child of children) {
+    const type = (child as Record<string, unknown>).type;
+    if (type === "FRAME") {
+      frames.push(child);
+    } else if (type === "SECTION") {
+      frames.push(...collectFrames(child));
+    }
+  }
+
+  return frames;
 }
 
 /**

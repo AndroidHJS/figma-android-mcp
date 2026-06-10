@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { GetFileNodesResponse } from "@figma/rest-api-spec";
+import type { GetFileNodesResponse, Node as FigmaDocumentNode } from "@figma/rest-api-spec";
 import { FigmaService } from "~/services/figma.js";
 import { Logger } from "~/utils/logger.js";
 import { sendProgress, startProgressHeartbeat, type ToolExtra } from "~/mcp/progress.js";
@@ -10,7 +10,7 @@ import {
   type Transport,
 } from "~/telemetry/index.js";
 import { getFigmaData as runGetFigmaData } from "~/services/get-figma-data.js";
-import { getFigmaSectionFromRaw } from "~/services/get-figma-section.js";
+import { getFigmaSectionFromRaw, collectFrames } from "~/services/get-figma-section.js";
 import type { OutputPlatform } from "~/config.js";
 import type { Skill } from "~/skills/types.js";
 import type { ContentBlock } from "@modelcontextprotocol/sdk/types.js";
@@ -111,11 +111,11 @@ async function getFigmaNode(
       content.push({ type: "text", text: result.formatted });
 
       if (includePreview) {
-        // Extract direct FRAME child IDs from the already-fetched raw response — no extra API call.
-        const sectionDoc = Object.values(rawResult.data.nodes ?? {})[0]?.document as Record<string, unknown> | undefined;
-        const childFrameIds: string[] = ((sectionDoc?.children ?? []) as Record<string, unknown>[])
-          .filter((c) => c.type === "FRAME")
-          .map((c) => c.id as string);
+        // Collect all FRAME descendants (including those nested inside child SECTIONs).
+        const sectionDoc = Object.values(rawResult.data.nodes ?? {})[0]?.document as FigmaDocumentNode | undefined;
+        const childFrameIds: string[] = sectionDoc
+          ? collectFrames(sectionDoc).map((c) => c.id)
+          : [];
 
         const previews = await Promise.all(
           childFrameIds.map((fid) =>
