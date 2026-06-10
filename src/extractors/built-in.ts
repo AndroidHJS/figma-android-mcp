@@ -233,6 +233,15 @@ export const componentExtractor: ExtractorFn = (node, result, context) => {
     if (hasValue("componentId", node)) {
       result.componentId = node.componentId;
     }
+    // Raw override list (which descendants deviate from the definition).
+    // Field-name mapping and value resolution happen later in
+    // instance-overrides.ts, once the simplified subtree exists.
+    if (hasValue("overrides", node) && Array.isArray(node.overrides) && node.overrides.length > 0) {
+      result.overrides = (node.overrides as { id: string; overriddenFields: string[] }[])
+        .filter((o) => Array.isArray(o.overriddenFields) && o.overriddenFields.length > 0)
+        .map((o) => ({ nodeId: o.id, fields: o.overriddenFields }));
+      if (result.overrides.length === 0) delete result.overrides;
+    }
     if (hasValue("componentProperties", node)) {
       const props = simplifyComponentProperties(
         node.componentProperties as Record<string, { type: string; value: boolean | string }>,

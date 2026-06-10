@@ -67,11 +67,14 @@ export function mapToViews(layout: SimplifiedLayout): ViewsLayout {
     result.scroll = mapViewsScroll(layout.overflowScroll);
   }
 
-  // absolute positioning
+  // absolute positioning — a server-inferred anchor supersedes raw margins:
+  // emitting both would hand the LLM two competing positioning systems.
   if (layout.position === "absolute") {
     result.position = "absolute";
   }
-  if (layout.locationRelativeToParent) {
+  if (layout.anchor) {
+    applyAnchorToViews(layout.anchor, result);
+  } else if (layout.locationRelativeToParent) {
     result.layout_marginStart = layout.locationRelativeToParent.x;
     result.layout_marginTop = layout.locationRelativeToParent.y;
   }
@@ -88,6 +91,30 @@ export function mapToViews(layout: SimplifiedLayout): ViewsLayout {
   }
 
   return result;
+}
+
+/**
+ * Map a SimplifiedAnchor onto FrameLayout semantics: layout_gravity + margins.
+ * Stretch axes become match_parent sizing with both insets as margins.
+ */
+function applyAnchorToViews(
+  anchor: NonNullable<SimplifiedLayout["anchor"]>,
+  result: ViewsLayout,
+): void {
+  const gravity: string[] = [];
+  if (anchor.vertical === "center") gravity.push("center_vertical");
+  else if (anchor.vertical === "bottom") gravity.push("bottom");
+  if (anchor.horizontal === "center") gravity.push("center_horizontal");
+  else if (anchor.horizontal === "end") gravity.push("end");
+  if (gravity.length > 0) result.layoutGravity = gravity.join("|");
+
+  if (anchor.horizontal === "stretch") result.layout_width = "match_parent";
+  if (anchor.vertical === "stretch") result.layout_height = "match_parent";
+
+  if (anchor.insets?.start) result.layout_marginStart = anchor.insets.start;
+  if (anchor.insets?.top) result.layout_marginTop = anchor.insets.top;
+  if (anchor.insets?.end) result.layout_marginEnd = anchor.insets.end;
+  if (anchor.insets?.bottom) result.layout_marginBottom = anchor.insets.bottom;
 }
 
 function mapViewsMainGravity(value: string | undefined): string | undefined {

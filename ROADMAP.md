@@ -28,6 +28,9 @@
 - [x] 自动布局推断（`inferAutoLayoutFromPositions`）— 从绝对定位子节点推断 flex 排列
 - [x] 布局提示生成（`layoutHints`）— 推荐 `fillMaxWidth()`、`fillMaxSize()` 等
 - [x] 固定尺寸转 fillMax 转换（`convertFixedChildrenToFillMax`）— 居中固定宽度子元素转响应式
+- [x] 锚点推断（`anchor-inference.ts`）— mode none 子元素按九宫格最近锚点输出 `anchorAlignment`/`anchorMargin`（Compose）或 `layoutGravity`/margins（Views），≥85% 宽自动判 stretch；显式 constraints 优先
+- [x] 附着关系检测 — regionHints 识别小元素附着大元素（头像+角标），输出宿主相对锚点，避免被当独立散点定位
+- [x] 浮层语义识别（`overlay-detection.ts`）— 多信号（命名+视觉）识别静态稿里的 toast / 弹窗：toast 标记 `overlayRole` 并从布局推断中剔除；弹窗按 scrim 的 z-order 切分、剥离背景页副本、推断 bottomSheet/centerDialog 形态；输出 `overlays` 区块指导 LLM 实现为事件触发 UI；置信度分级，信号不足不动数据
 
 ### 样式 & 文本
 
@@ -61,7 +64,7 @@
 
 ### 组件 & 实例（高优先级）
 
-- [ ] **实例覆盖值** — INSTANCE 节点只返回被覆盖的属性，隐藏未被覆盖的子节点
+- [x] **实例覆盖值**（`instance-overrides.ts`）— INSTANCE 输出 `overrides` 列表（含解析后的 text 值），被覆盖后代标记 `overridden`；组件定义在同一棵树内时子树收敛到覆盖分支并标记 `prunedToOverrides`，定义不在场时保留全量子树兜底
 - [ ] **Slot 子节点** — 正确处理 INSTANCE 中的 slot 类型子节点
 - [ ] **组件提取专用工具** — `get_figma_components` 工具，获取完整组件/组件集的设计数据
 

@@ -15,6 +15,9 @@ import {
   inferAutoLayoutFromPositions,
   convertFixedChildrenToFillMax,
 } from "~/transformers/layout.js";
+import { inferAnchors } from "~/transformers/anchor-inference.js";
+import { detectAndProcessOverlays } from "~/transformers/overlay-detection.js";
+import { processInstanceOverrides } from "~/transformers/instance-overrides.js";
 import { generateRegionHints } from "~/transformers/region-hints.js";
 import { generateLayoutHints } from "~/services/get-figma-data.js";
 
@@ -754,8 +757,14 @@ async function processFrame(
     fileKey,
   });
 
+  processInstanceOverrides(simplified.nodes);
+
+  const overlays = detectAndProcessOverlays(simplified.nodes, simplified.globalVars);
+  if (overlays.length > 0) simplified.overlays = overlays;
+
   inferAutoLayoutFromPositions(simplified.nodes, simplified.globalVars);
   convertFixedChildrenToFillMax(simplified.nodes, simplified.globalVars);
+  inferAnchors(simplified.nodes, simplified.globalVars);
   mapLayoutStyles(simplified.globalVars, outputPlatform);
 
   writeLogs("figma-section-frame-simplified.json", simplified);

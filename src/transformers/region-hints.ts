@@ -7,6 +7,11 @@ import {
   computeConsistentGap,
 } from "~/transformers/layout.js";
 import type { ChildLayoutData } from "~/transformers/layout.js";
+import {
+  isAttachment,
+  computeAttachment,
+  type AttachmentInfo,
+} from "~/transformers/anchor-inference.js";
 
 /**
  * Minimum ratio of overlap area to the LARGER element's area to be treated as intentional stacking.
@@ -30,6 +35,12 @@ export interface RegionGroup {
   viewsContainer?: "FrameLayout" | "LinearLayout";
   /** For viewsContainer="LinearLayout", the orientation to use. */
   viewsOrientation?: "horizontal" | "vertical";
+  /**
+   * Small elements riding on the region's largest member (avatar + VIP badge).
+   * Render each inside the host's Box/FrameLayout, aligned to `anchor` with
+   * `insets` — not as independent absolutely-positioned siblings.
+   */
+  attachments?: ({ childId: string; childName: string; hostId: string } & AttachmentInfo)[];
 }
 
 export interface RegionHint {
@@ -89,13 +100,29 @@ function processParent(parent: SimplifiedNode, globalVars: GlobalVars): RegionHi
   const stackGroups = buildStackGroups(eligible);
   for (const group of stackGroups) {
     for (const d of group) assigned.add(d);
-    regions.push({
+    const region: RegionGroup = {
       mode: "stack",
       childIds: group.map((d) => d.node.id),
       childNames: group.map((d) => d.node.name),
       composeContainer: "Box",
       viewsContainer: "FrameLayout",
-    });
+    };
+
+    // Attachment annotation: small members riding on the group's largest
+    // member get a host-relative anchor so the LLM nests them with the host
+    // instead of positioning them independently from the region root.
+    const host = group.reduce((a, b) => (a.width * a.height >= b.width * b.height ? a : b));
+    const attachments = group
+      .filter((d) => d !== host && isAttachment(host, d))
+      .map((d) => ({
+        childId: d.node.id,
+        childName: d.node.name,
+        hostId: host.node.id,
+        ...computeAttachment(host, d),
+      }));
+    if (attachments.length > 0) region.attachments = attachments;
+
+    regions.push(region);
   }
 
   // Step C: anchor grouping by x → Column candidates
@@ -145,6 +172,8 @@ function collectEligible(
   const result: ChildDatum[] = [];
   for (const child of children) {
     if (!child.layout) continue;
+    // Transient overlays must not be grouped with the static content they cover.
+    if (child.overlayRole) continue;
     const layout = globalVars.styles[child.layout] as SimplifiedLayout | undefined;
     if (!layout || !layout.locationRelativeToParent) continue;
     if (layout.position === "absolute") continue;
@@ -206,7 +235,11 @@ function buildStackGroups(eligible: ChildDatum[]): ChildDatum[][] {
 
   for (let i = 0; i < eligible.length; i++)
     for (let j = i + 1; j < eligible.length; j++)
-      if (isSignificantOverlap(eligible[i], eligible[j])) union(i, j);
+      if (
+        isSignificantOverlap(eligible[i], eligible[j]) ||
+        isAttachment(eligible[i], eligible[j])
+      )
+        union(i, j);
 
   const groups = new Map<number, number[]>();
   for (let i = 0; i < eligible.length; i++) {

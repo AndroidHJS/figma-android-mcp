@@ -135,6 +135,8 @@ export interface SimplifiedDesign {
   globalVars: GlobalVars;
   /** Nodes that should be downloaded as PNG — call `download_figma_images` with these nodeIds before writing code. */
   imageAssets: ImageAsset[];
+  /** Transient overlays (toasts/dialogs) detected in the static design — implement as triggered UI, not page content. */
+  overlays?: import("~/transformers/overlay-detection.js").OverlayInfo[];
 }
 
 export interface SimplifiedNode {
@@ -166,6 +168,25 @@ export interface SimplifiedNode {
   componentId?: string;
   componentProperties?: Record<string, boolean | string>;
   componentPropertyReferences?: Record<string, string>;
+  /**
+   * INSTANCE only: which descendants deviate from the component definition
+   * and how. Enriched with resolved text values by instance-overrides.ts.
+   */
+  overrides?: import("~/transformers/instance-overrides.js").InstanceOverride[];
+  /** Set on overridden descendants inside an instance: the deviating fields. */
+  overridden?: string[];
+  /**
+   * INSTANCE only: non-overridden children were omitted because the COMPONENT
+   * definition node is present elsewhere in this output — read structure from
+   * the definition and apply this instance's `overrides` as diffs.
+   */
+  prunedToOverrides?: true;
+  /**
+   * Set by overlay detection: this node is transient UI (toast/dialog body)
+   * painted into the static design. Layout/anchor/region inference skip such
+   * nodes, and the LLM implements them as triggered UI, not page content.
+   */
+  overlayRole?: "toast" | "dialog";
   // children
   children?: SimplifiedNode[];
 }

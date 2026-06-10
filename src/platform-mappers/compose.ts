@@ -63,11 +63,14 @@ export function mapToCompose(layout: SimplifiedLayout): ComposeLayout {
     result.scroll = mapScroll(layout.overflowScroll);
   }
 
-  // absolute positioning
+  // absolute positioning — a server-inferred anchor supersedes the raw offset:
+  // emitting both would hand the LLM two competing positioning systems.
   if (layout.position === "absolute") {
     result.position = "absolute";
   }
-  if (layout.locationRelativeToParent) {
+  if (layout.anchor) {
+    applyAnchorToCompose(layout.anchor, result);
+  } else if (layout.locationRelativeToParent) {
     result.offset = layout.locationRelativeToParent;
   }
 
@@ -85,6 +88,30 @@ export function mapToCompose(layout: SimplifiedLayout): ComposeLayout {
   // Only return if there's something meaningful
   if (Object.keys(result).length === 0) return result;
   return result;
+}
+
+/**
+ * Map a SimplifiedAnchor onto Compose Box semantics: alignment + edge padding.
+ * Stretch axes become fillMax sizing with both insets as padding; for the
+ * alignment name a stretched axis reads as Top/Start (irrelevant once filled).
+ */
+function applyAnchorToCompose(
+  anchor: NonNullable<SimplifiedLayout["anchor"]>,
+  result: ComposeLayout,
+): void {
+  const v = anchor.vertical === "stretch" ? "top" : anchor.vertical;
+  const h = anchor.horizontal === "stretch" ? "start" : anchor.horizontal;
+
+  const vName = v === "top" ? "Top" : v === "bottom" ? "Bottom" : "Center";
+  const hName = h === "start" ? "Start" : h === "end" ? "End" : "Center";
+  result.anchorAlignment = vName === "Center" && hName === "Center" ? "Center" : `${vName}${hName}`;
+
+  if (anchor.horizontal === "stretch") result.width = "fillMax";
+  if (anchor.vertical === "stretch") result.height = "fillMax";
+
+  if (anchor.insets) {
+    result.anchorMargin = { ...anchor.insets };
+  }
 }
 
 function mapArrangement(value: string): ComposeLayout["arrangement"] {

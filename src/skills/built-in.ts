@@ -3,6 +3,7 @@ import {
   COMPOSE_OFFSET_RULES_ZH,
   COMPOSE_OFFSET_SELF_CHECK_ZH,
 } from "./positioning-policy.js";
+import { OVERLAY_RULES_ZH } from "./overlay-policy.js";
 
 export const builtInSkills: Skill[] = [
   {
@@ -102,6 +103,8 @@ Compose → ✅ 父容器不设固定高度，用默认 wrapContentHeight() 或 
 - ❌ 在 Column/Row 子项上用 \`Modifier.absoluteOffset()\` 推开元素 → ✅ 用 \`Arrangement.spacedBy()\` 统一控制，或在子项之间插入 \`Spacer\`
 
 ${COMPOSE_OFFSET_RULES_ZH}
+
+${OVERLAY_RULES_ZH}
 
 ### ContentScale.Fit 误用到 Figma 切图（Compose 专属，高发）
 

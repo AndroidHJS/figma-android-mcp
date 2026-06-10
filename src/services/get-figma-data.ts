@@ -22,6 +22,10 @@ import {
   inferAutoLayoutFromPositions,
   convertFixedChildrenToFillMax,
 } from "~/transformers/layout.js";
+import { inferAnchors } from "~/transformers/anchor-inference.js";
+import { detectAndProcessOverlays } from "~/transformers/overlay-detection.js";
+import { processInstanceOverrides } from "~/transformers/instance-overrides.js";
+import { OVERLAY_OUTPUT_NOTE } from "~/skills/overlay-policy.js";
 import { generateRegionHints } from "~/transformers/region-hints.js";
 import {
   compactDesign,
@@ -49,6 +53,7 @@ export function generateLayoutHints(screen: { width: string; height: string }, p
       `When both equal screen dimensions: Use layout_width="match_parent" layout_height="match_parent".`,
       `For content centered in a parent and narrower than the parent: Use layout_gravity="center" layout_width="match_parent" with paddingLeft/paddingRight instead of layout_width="Wdp" + layout_gravity="center", where padding = (parentWidth - childWidth) / 2.`,
       `Parent container: Use FrameLayout as the root container. Child views are positioned via layout_marginStart/layout_marginTop.`,
+      `ANCHORED ELEMENTS: When a node's layout has layoutGravity (server-inferred anchor) with layout_margin* values, position it with android:layout_gravity plus exactly those margins inside a FrameLayout. Do NOT re-derive layout_marginStart/Top from raw coordinates for such nodes.`,
       `CRITICAL — ConstraintLayout usage: ONLY add app:layout_constraint* attributes when the node's layout data explicitly contains layout_constraintHorizontal or layout_constraintVertical. If these keys are absent from the layout, place the View in a FrameLayout using ONLY layout_width, layout_height, layout_marginStart, and layout_marginTop — never add ConstraintLayout attributes to such nodes.`,
       `Centering without ConstraintLayout: When a node has layout_constraintHorizontal: "center" but no other constraint keys, use android:layout_gravity="center_horizontal" inside a FrameLayout instead of ConstraintLayout.`,
       `FILL CHILD IN HORIZONTAL LINEARLAYOUT: When a child inside a LinearLayout with orientation="horizontal" has layout_width="match_parent" or fill sizing, use android:layout_width="0dp" android:layout_weight="1" instead.`,
@@ -256,6 +261,16 @@ export async function getFigmaData(
     }
     const simplifyMs = Date.now() - simplifyStart;
 
+    // Instance overrides first: annotation/pruning changes the child sets
+    // every later pass reasons about.
+    processInstanceOverrides(simplifiedDesign.nodes);
+
+    // Overlay detection runs FIRST: toasts/dialog scrims poison structure
+    // inference if they participate, and backdrop stripping must happen
+    // before anything reasons about the frame's children.
+    const overlays = detectAndProcessOverlays(simplifiedDesign.nodes, simplifiedDesign.globalVars);
+    if (overlays.length > 0) simplifiedDesign.overlays = overlays;
+
     // Infer auto-layout (Column/Row) from absolute positions for
     // non-auto-layout frames whose children form recognizable patterns.
     inferAutoLayoutFromPositions(simplifiedDesign.nodes, simplifiedDesign.globalVars);
@@ -263,6 +278,10 @@ export async function getFigmaData(
     // Convert centered fixed-width/height children to fill + padding so the
     // output directly expresses responsive layout instead of fixed dimensions.
     convertFixedChildrenToFillMax(simplifiedDesign.nodes, simplifiedDesign.globalVars);
+
+    // Re-express absolutely-positioned children as nearest-anchor + inset so
+    // the LLM gets responsive positioning instead of raw baseline coordinates.
+    inferAnchors(simplifiedDesign.nodes, simplifiedDesign.globalVars);
 
     // Generate per-parent region grouping hints for parents whose children
     // don't form a single Column/Row (mode still "none" after inference).
@@ -295,6 +314,9 @@ export async function getFigmaData(
         }));
 
       const result: Record<string, unknown> = { metadata, nodes, globalVars, imageAssets, screen, layoutHints, regionHints, _REQUIRED_RULES };
+      if (simplifiedDesign.overlays) {
+        result.overlays = { instructions: OVERLAY_OUTPUT_NOTE, items: simplifiedDesign.overlays };
+      }
       formatted = serializeWithSizeLimit(result, outputFormat);
     } catch (error) {
       tagError(error, { phase: "serialize" });

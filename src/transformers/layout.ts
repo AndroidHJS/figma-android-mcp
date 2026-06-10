@@ -6,6 +6,7 @@ import type {
 } from "@figma/rest-api-spec";
 import { generateShorthand, generateVarId } from "~/utils/common.js";
 import { dpString } from "~/utils/units.js";
+import type { SimplifiedAnchor } from "~/transformers/anchor-inference.js";
 
 export interface SimplifiedLayout {
   mode: "none" | "row" | "column";
@@ -34,6 +35,8 @@ export interface SimplifiedLayout {
     horizontal: "MIN" | "MAX" | "CENTER" | "STRETCH" | "SCALE";
     vertical: "MIN" | "MAX" | "CENTER" | "STRETCH" | "SCALE";
   };
+  /** Server-inferred nearest-anchor position for absolutely-positioned children (see anchor-inference.ts). */
+  anchor?: SimplifiedAnchor;
 }
 
 // Convert Figma's layout config into a more typical flex-like schema
@@ -369,6 +372,9 @@ function collectEligibleChildren(
   const result: ChildLayoutData[] = [];
   for (const child of children) {
     if (!child.layout) continue;
+    // Transient overlays float above the page — including them breaks
+    // column/row detection for the real content beneath.
+    if (child.overlayRole) continue;
     const layout = globalVars.styles[child.layout] as SimplifiedLayout | undefined;
     if (!layout || !layout.locationRelativeToParent) continue;
     if (layout.position === "absolute") continue;
