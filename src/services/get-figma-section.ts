@@ -741,6 +741,7 @@ async function processFrame(
   apiResponse: GetFileNodesResponse,
   depth: number | undefined,
   outputPlatform: Platform,
+  fileKey?: string,
 ): Promise<SimplifiedDesign> {
   const nodeCounter = { count: 0 };
   const syntheticResponse = makeFrameResponse(apiResponse, frame);
@@ -750,6 +751,7 @@ async function processFrame(
     afterChildren: collapseRasterContainers,
     nodeCounter,
     nodeFilter: (node) => !isSystemUi(node),
+    fileKey,
   });
 
   inferAutoLayoutFromPositions(simplified.nodes, simplified.globalVars);
@@ -812,7 +814,7 @@ export async function getFigmaSectionFromRaw(
   const allImageAssets = new Map<string, ImageAsset>();
 
   for (const frame of frames) {
-    const simplified = await processFrame(frame, apiResponse, depth, outputPlatform);
+    const simplified = await processFrame(frame, apiResponse, depth, outputPlatform, input.fileKey);
 
     // Deduplicate image assets by nodeId across frames
     for (const asset of simplified.imageAssets) {

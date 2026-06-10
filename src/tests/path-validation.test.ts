@@ -28,6 +28,7 @@ const validParams = {
   fileKey: "abc123",
   nodes: [{ nodeId: "1:2", fileName: "test.png", category: "export-tagged" as const }],
   densities: ["xhdpi"],
+  onlyExportTagged: true,
 };
 
 describe("download path validation (handler)", () => {

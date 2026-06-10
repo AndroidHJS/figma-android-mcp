@@ -51,6 +51,9 @@
 - [x] PostHog 遥测（含密钥脱敏）
 - [x] 请求级认证（`X-Figma-Token` HTTP header）
 - [x] `fetch` 子命令 — 直接输出简化数据到 stdout
+- [x] 输出体积分级压缩 — >300KB 时依次执行无损压缩 / 重复子树折叠 + 长文本截断 / 装饰节点细节截断（`compact-design.ts`，详见 `docs/plan-output-size-limit.md`）
+- [x] 设计密度请求级作用域 — dp/sp 换算 divisor 改为 AsyncLocalStorage 请求级 + 按 fileKey 注册表，修复 HTTP 并发互相污染；显式 `--design-density` 不再被自动检测覆盖
+- [x] 定位规则单一来源 — `positioning-policy.ts` 统一 skill 与 layoutHints 的 offset 使用准则（5 级优先级阶梯），消除规则互相矛盾
 
 ---
 

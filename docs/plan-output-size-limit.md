@@ -1,5 +1,14 @@
 # Plan: 解决 get_figma_data 输出过大问题
 
+> **状态：已实现（2026-06）**
+> 实现位于 `src/services/compact-design.ts`（三阶段压缩）与 `src/services/get-figma-data.ts` 的 `serializeWithSizeLimit()`（编排，阈值 300KB）。
+> 与原方案的差异：
+> 1. 1b（渐变转图像）与 1d（特效矩形转图像）未实现——与 layoutHints 的 GRADIENT 规则（教 LLM 用 Brush 还原渐变）方向冲突，需先统一策略再做；
+> 2. 第二步顺序调整为「先截断长文本、后折叠重复子树」，使折叠节点的 `texts` 数组携带的是已截断内容；
+> 3. `_repeatOf` / `_truncated` 字段只存在于序列化时的克隆树上，未污染 `SimplifiedNode` 类型——压缩是序列化层关注点；
+> 4. 压缩说明通过输出中的 `_compressionNotes` 字段告知 LLM，而非工具描述。
+> 测试见 `src/tests/compact-design.test.ts`。
+
 ## 现状
 
 `get_figma_data` MCP 工具将 Figma 设计数据简化后序列化为单个 YAML 字符串返回。当设计较复杂时，输出可能超过 MCP tool result 的 token 上限，导致结果被截存到文件而 LLM 无法读取。

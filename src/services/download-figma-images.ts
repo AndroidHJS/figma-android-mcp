@@ -2,7 +2,7 @@ import path from "path";
 import type { Transform } from "@figma/rest-api-spec";
 import type { FigmaService } from "~/services/figma.js";
 import type { ImageProcessingResult } from "~/utils/image-processing.js";
-import { ANDROID_DENSITIES, type AndroidDensity, getDesignDensityDivisor } from "~/utils/units.js";
+import { ANDROID_DENSITIES, type AndroidDensity, getFileDensityDivisor } from "~/utils/units.js";
 import { tagError } from "~/utils/error-meta.js";
 import { deduplicateImages } from "~/utils/dedup-images.js";
 import fs from "fs";
@@ -169,7 +169,9 @@ export async function downloadFigmaImages(
     fallbacks = [];
 
     for (const density of densities) {
-      const scale = ANDROID_DENSITIES[density] / getDesignDensityDivisor();
+      // Density divisor is looked up by fileKey — recorded when this file's
+      // data was simplified — never from leftover state of an unrelated request.
+      const scale = ANDROID_DENSITIES[density] / getFileDensityDivisor(fileKey);
       const densityDir = path.join(localPath, `mipmap-${density}`);
       fs.mkdirSync(densityDir, { recursive: true });
 

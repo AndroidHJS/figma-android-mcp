@@ -6,7 +6,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ProxyAgent, EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 import { Logger } from "./utils/logger.js";
 import { hasProxyEnv, setProxyMode } from "./utils/proxy-env.js";
-import { setDesignDensityDivisor } from "./utils/units.js";
+import { setDefaultDensityDivisor } from "./utils/units.js";
 import { createServer, type CreateServerOptions } from "./mcp/index.js";
 import { requireGlobalCredentials, type ServerConfig } from "./config.js";
 import type { FigmaAuthOptions } from "./services/figma.js";
@@ -51,9 +51,10 @@ export async function startServer(config: ServerConfig): Promise<void> {
     setProxyMode("env");
   }
 
-  // Set design density: auto/mdpi → 1×, xhdpi → 2×, xxhdpi → 3×
+  // Set design density: auto/mdpi → 1×, xhdpi → 2×, xxhdpi → 3×.
+  // "auto" additionally enables per-file detection from the root frame width.
   const densityMap: Record<string, number> = { auto: 1, mdpi: 1, xhdpi: 2, xxhdpi: 3 };
-  setDesignDensityDivisor(densityMap[config.designDensity] ?? 1);
+  setDefaultDensityDivisor(densityMap[config.designDensity] ?? 1, config.designDensity === "auto");
 
   const telemetryEnabled = telemetry.initTelemetry({
     optOut: config.noTelemetry,

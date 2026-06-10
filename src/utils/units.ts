@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { pixelRound } from "~/utils/common.js";
 
 /**
@@ -7,21 +8,80 @@ import { pixelRound } from "~/utils/common.js";
  * Figma files designed at 1× (360dp-wide artboards) map 1:1. Files designed at 2×
  * (720dp-wide) need a divisor of 2 so 16 px → 8 dp.
  *
- * The divisor is set once at startup from ServerConfig and never changes per
- * request — this is a global assumption about the design file, not a per-node
- * property.
+ * Scoping: the divisor is a property of the design FILE being processed, not of
+ * the server. The simplify pipeline yields to the event loop mid-traversal
+ * (node-walker's maybeYield), so concurrent HTTP requests interleave — a plain
+ * module global would let one request's auto-detected density bleed into
+ * another's. Request scoping uses AsyncLocalStorage: `runWithDensityDivisor`
+ * pins the divisor for everything (sync or async) inside its callback, and
+ * `dpString`/`spString` read it from there. Outside any scope they fall back
+ * to the server-config default.
+ *
+ * Cross-call coupling: `download_figma_images` arrives as a separate MCP call
+ * and needs the divisor that was auto-detected when the file's data was
+ * fetched. That is served by the per-fileKey registry below — never by
+ * leftover global state.
  */
 
-let designDensityDivisor: number = 1;
+const densityScope = new AsyncLocalStorage<number>();
 
-/** One-time init from config. Default 1 (mdpi == 1× design). */
-export function setDesignDensityDivisor(divisor: number): void {
+/** Server-level default from --design-density config. 1 == mdpi == 1× design. */
+let defaultDivisor = 1;
+
+/** Whether per-file auto-detection is allowed (config --design-density=auto). */
+let autoDetectEnabled = true;
+
+/** One-time init from config at server startup. */
+export function setDefaultDensityDivisor(divisor: number, allowAutoDetect: boolean): void {
   if (divisor <= 0) throw new Error(`design density divisor must be positive, got ${divisor}`);
-  designDensityDivisor = divisor;
+  defaultDivisor = divisor;
+  autoDetectEnabled = allowAutoDetect;
+}
+
+/**
+ * Divisor to use for a design whose root frame is `frameWidth` px wide.
+ * Respects an explicit (non-auto) --design-density: auto-detection must not
+ * silently override what the user configured.
+ */
+export function resolveDensityDivisor(frameWidth: number): number {
+  return autoDetectEnabled ? guessDesignDensity(frameWidth) : defaultDivisor;
+}
+
+/** Run `fn` with `divisor` pinned for all dp/sp conversions inside it. */
+export function runWithDensityDivisor<T>(divisor: number, fn: () => T): T {
+  if (divisor <= 0) throw new Error(`design density divisor must be positive, got ${divisor}`);
+  return densityScope.run(divisor, fn);
 }
 
 export function getDesignDensityDivisor(): number {
-  return designDensityDivisor;
+  return densityScope.getStore() ?? defaultDivisor;
+}
+
+// ---------------------------------------------------------------------------
+// Per-fileKey density registry
+// ---------------------------------------------------------------------------
+
+const FILE_DENSITY_CACHE_LIMIT = 200;
+const fileDensity = new Map<string, number>();
+
+/** Record the divisor resolved while simplifying a file, for later download calls. */
+export function recordFileDensityDivisor(fileKey: string, divisor: number): void {
+  // Refresh insertion order so the eviction below is LRU-ish.
+  fileDensity.delete(fileKey);
+  fileDensity.set(fileKey, divisor);
+  if (fileDensity.size > FILE_DENSITY_CACHE_LIMIT) {
+    const oldest = fileDensity.keys().next().value;
+    if (oldest !== undefined) fileDensity.delete(oldest);
+  }
+}
+
+/**
+ * Divisor for a file whose data was previously fetched, falling back to the
+ * server default when the file was never simplified in this process (e.g. a
+ * direct download_figma_images call).
+ */
+export function getFileDensityDivisor(fileKey: string): number {
+  return fileDensity.get(fileKey) ?? defaultDivisor;
 }
 
 /**
@@ -30,7 +90,7 @@ export function getDesignDensityDivisor(): number {
  * 32 (at 2× design) → "16dp"
  */
 export function dpString(pxValue: number): string {
-  return `${pixelRound(pxValue / designDensityDivisor)}dp`;
+  return `${pixelRound(pxValue / getDesignDensityDivisor())}dp`;
 }
 
 /**
@@ -39,7 +99,7 @@ export function dpString(pxValue: number): string {
  * 28 (at 2× design) → "14sp"
  */
 export function spString(pxValue: number): string {
-  return `${pixelRound(pxValue / designDensityDivisor)}sp`;
+  return `${pixelRound(pxValue / getDesignDensityDivisor())}sp`;
 }
 
 /**

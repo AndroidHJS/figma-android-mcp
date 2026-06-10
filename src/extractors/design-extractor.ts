@@ -7,7 +7,13 @@ import type {
   Style,
 } from "@figma/rest-api-spec";
 import { simplifyComponents, simplifyComponentSets } from "~/transformers/component.js";
-import { dpString, guessDesignDensity, setDesignDensityDivisor } from "~/utils/units.js";
+import {
+  dpString,
+  getDesignDensityDivisor,
+  recordFileDensityDivisor,
+  resolveDensityDivisor,
+  runWithDensityDivisor,
+} from "~/utils/units.js";
 import { tagError } from "~/utils/error-meta.js";
 import type { ExtractorFn, TraversalOptions, SimplifiedDesign } from "./types.js";
 import { extractFromDesign } from "./node-walker.js";
@@ -21,27 +27,44 @@ export async function simplifyRawFigmaObject(
   options: TraversalOptions = {},
 ): Promise<SimplifiedDesign> {
   // Extract components, componentSets, and raw nodes from API response
-  const { metadata, rawNodes, components, componentSets, extraStyles } =
+  const { metadata, rawNodes, components, componentSets, extraStyles, rootBoundingBox } =
     parseAPIResponse(apiResponse);
 
-  // Process nodes using the flexible extractor system
-  const {
-    nodes: extractedNodes,
-    globalVars: finalGlobalVars,
-    traversalState,
-  } = await extractFromDesign(rawNodes, nodeExtractors, options, { styles: {} }, extraStyles);
+  // Density is a per-file property and the traversal below yields to the
+  // event loop, so the divisor is pinned via AsyncLocalStorage for this call
+  // only — never written to shared state (see units.ts).
+  const divisor = rootBoundingBox
+    ? resolveDensityDivisor(rootBoundingBox.width)
+    : getDesignDensityDivisor();
+  if (options.fileKey) {
+    recordFileDensityDivisor(options.fileKey, divisor);
+  }
 
-  return {
-    ...metadata,
-    nodes: extractedNodes,
-    components: simplifyComponents(components, traversalState.componentPropertyDefinitions),
-    componentSets: simplifyComponentSets(
-      componentSets,
-      traversalState.componentPropertyDefinitions,
-    ),
-    globalVars: { styles: finalGlobalVars.styles },
-    imageAssets: traversalState.imageAssets,
-  };
+  return runWithDensityDivisor(divisor, async () => {
+    const screen = rootBoundingBox
+      ? { width: dpString(rootBoundingBox.width), height: dpString(rootBoundingBox.height) }
+      : undefined;
+
+    // Process nodes using the flexible extractor system
+    const {
+      nodes: extractedNodes,
+      globalVars: finalGlobalVars,
+      traversalState,
+    } = await extractFromDesign(rawNodes, nodeExtractors, options, { styles: {} }, extraStyles);
+
+    return {
+      ...metadata,
+      screen,
+      nodes: extractedNodes,
+      components: simplifyComponents(components, traversalState.componentPropertyDefinitions),
+      componentSets: simplifyComponentSets(
+        componentSets,
+        traversalState.componentPropertyDefinitions,
+      ),
+      globalVars: { styles: finalGlobalVars.styles },
+      imageAssets: traversalState.imageAssets,
+    };
+  });
 }
 
 /**
@@ -98,20 +121,16 @@ function parseAPIResponse(data: GetFileResponse | GetFileNodesResponse) {
     nodesToParse = data.document.children;
   }
 
-  // Extract screen dimensions from the root node (nodeId-based fetches only).
-  // Full-file fetches span multiple pages and have no single "screen".
-  let screen: { width: string; height: string } | undefined;
+  // Root bounding box drives density detection and screen dimensions
+  // (nodeId-based fetches only — full-file fetches span multiple pages and
+  // have no single "screen"). Conversion to dp happens in the caller, inside
+  // the request's density scope.
+  let rootBoundingBox: { width: number; height: number } | undefined;
   if ("nodes" in data) {
     const documentNode = nodesToParse[0];
-    const bb = (documentNode as { absoluteBoundingBox?: { width: number; height: number } })
-      .absoluteBoundingBox;
-    if (bb) {
-      setDesignDensityDivisor(guessDesignDensity(bb.width));
-      screen = {
-        width: dpString(bb.width),
-        height: dpString(bb.height),
-      };
-    }
+    rootBoundingBox = (
+      documentNode as { absoluteBoundingBox?: { width: number; height: number } }
+    ).absoluteBoundingBox;
   }
 
   const { name } = data;
@@ -119,8 +138,8 @@ function parseAPIResponse(data: GetFileResponse | GetFileNodesResponse) {
   return {
     metadata: {
       name,
-      screen,
     },
+    rootBoundingBox,
     rawNodes: nodesToParse,
     extraStyles,
     components: aggregatedComponents,

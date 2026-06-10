@@ -1,4 +1,8 @@
 import type { Skill } from "./types.js";
+import {
+  COMPOSE_OFFSET_RULES_ZH,
+  COMPOSE_OFFSET_SELF_CHECK_ZH,
+} from "./positioning-policy.js";
 
 export const builtInSkills: Skill[] = [
   {
@@ -97,29 +101,7 @@ Compose → ✅ 父容器不设固定高度，用默认 wrapContentHeight() 或 
 
 - ❌ 在 Column/Row 子项上用 \`Modifier.absoluteOffset()\` 推开元素 → ✅ 用 \`Arrangement.spacedBy()\` 统一控制，或在子项之间插入 \`Spacer\`
 
-### 布局间距与 .offset() 误用（Compose 专属）
-
-**规则 1：顺序堆叠用 Column + Spacer，禁止用 offset 表达间距**
-
-- ❌ \`Box(modifier = Modifier.offset(y = 100.dp)) { ... }\` — 用 offset 推开元素
-- ✅ \`Column { Spacer(Modifier.height(100.dp)); ... }\`
-
-**规则 2：Box 内定位用 align + padding，禁止将 Figma 绝对坐标翻译为 offset**
-
-- ❌ \`Image(modifier = Modifier.size(56.dp).offset(x = 159.5.dp, y = 526.dp))\`
-- ✅ \`Image(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 230.dp).size(56.dp))\`
-
-offset 不参与 Compose 测量流程，固定像素值在不同屏幕尺寸下会错位；align + padding 跟随父容器自适应。
-
-**规则 3：.offset() 仅用于动画驱动的位移**
-
-\`\`\`kotlin
-// ✅ 唯一允许场景：动画驱动
-val offsetY by animateFloatAsState(...)
-Modifier.offset { IntOffset(0, offsetY.roundToInt()) }
-\`\`\`
-
-**传统 View**：无 offset 概念，对应场景一律用 margin / padding，不存在此问题。
+${COMPOSE_OFFSET_RULES_ZH}
 
 ### ContentScale.Fit 误用到 Figma 切图（Compose 专属，高发）
 
@@ -163,7 +145,7 @@ Figma 输出的 CSS 字符串含 \`radial-gradient(circle at 50% 50%, ...)\`—�
   - 搜 \`ContentScale\.Fit\` → 全部核对，Figma 切图应使用 \`ContentScale.FillBounds\`
   - 搜 \`FontWeight\.SemiBold\` → 核对是否应为 \`FontWeight.Bold\`
   - 搜 \`endX\\s*=\\s*[01]?\\.\\d+f\` → 除 0f 和 1f 外需有 gradientTransform 数据支撑
-  - 搜 \`.offset(\` → 确认是动画驱动（\`animateFloatAsState\` / \`animateIntOffsetAsState\`）；非动画的：顺序间距改 \`Column + Spacer\`，Box 内定位改 \`align + padding\`
+  - ${COMPOSE_OFFSET_SELF_CHECK_ZH}
   - 搜 \`drawCircle\` → 全部核实：节点是否是 GRADIENT_RADIAL fill？是 → 改为 Box + Modifier.background(Brush.radialGradient(...))。仅当节点本身就是圆形矢量路径时才保留 drawCircle。
 - View：grep \\\`layout_width="\\d+dp"\\\`，逐处核对是否落在白名单
 
@@ -367,7 +349,7 @@ const otherAssets = imageAssets.filter(a => a.category === "auto-detected");
    - 搜 \`ContentScale\\.Fit\` → 全部核实：Figma 下载的 PNG 切图必须用 \`ContentScale.FillBounds\`，仅网络/资源图片可用 Fit。
    - 搜 \`FontWeight\\.SemiBold\` → 核实文本样式：若设计数据标注 bold / fontWeight 700，改为 \`FontWeight.Bold\`。
    - 搜 \`endX\\s*=\\s*0?\\.\\d+f\` → 除 0f 和 1f 外必须有 Figma gradientTransform 数据支撑，否则改回 1f。
-   - 搜 \`Modifier\\.offset\(\` → 确认是动画驱动；非动画：顺序间距改 \`Column + Spacer\`，Box 内定位改 \`align(Alignment.Xxx) + padding\`。
+   - ${COMPOSE_OFFSET_SELF_CHECK_ZH}。
 
 1. **排版**：根据 \`layout\` / \`arrangement\` / \`alignment\` / \`spacing\` / \`width\` / \`height\`（或传统 View 的 \`orientation\` / \`gravity\` / \`layout_width\` / \`layout_height\`）搭骨架。优先用 get_figma_data 返回的 \`layoutHints\` 决定 Column/Row/Box 还是 ConstraintLayout。**对照效果图确认容器嵌套层次和排列方向与视觉一致，若效果图与数据矛盾，以效果图为准。**
 2. **外观**：fills（含颜色 hex）、strokes、cornerRadius、effects（阴影 / 模糊）。**以 Figma 导出数据为准**——颜色值、描边粗细、圆角半径、阴影参数都是精确数值，效果图可能因渲染/压缩产生偏差。

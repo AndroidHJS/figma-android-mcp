@@ -98,6 +98,13 @@ export interface TraversalOptions {
    * creates its own internal counter.
    */
   nodeCounter?: NodeCounter;
+  /**
+   * Figma file key of the design being simplified. Used to record the
+   * resolved density divisor per file so a later `download_figma_images`
+   * call can compute correct PNG scales without relying on leftover state
+   * from a previous request.
+   */
+  fileKey?: string;
 }
 
 /**
