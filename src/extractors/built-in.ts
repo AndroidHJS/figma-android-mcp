@@ -22,6 +22,7 @@ import {
 } from "~/transformers/component.js";
 import { hasValue, isRectangleCornerRadii } from "~/utils/identity.js";
 import { generateVarId, isVisible, stableStringify, toImageFileName } from "~/utils/common.js";
+import { dpString } from "~/utils/units.js";
 import type { Node as FigmaDocumentNode } from "@figma/rest-api-spec";
 
 // Reverse lookup cache: serialized style value → varId.
@@ -198,12 +199,26 @@ export const visualsExtractor: ExtractorFn = (node, result, context) => {
     result.opacity = node.opacity;
   }
 
-  // border radius
+  // border radius — clamp to min(width, height)/2 so Figma's "999px"
+  // pill-shape convention doesn't leak through to generated code.
   if (hasValue("cornerRadius", node) && typeof node.cornerRadius === "number") {
-    result.borderRadius = `${node.cornerRadius}dp`;
+    let cr = node.cornerRadius;
+    const box = (node as Record<string, unknown>).absoluteBoundingBox as
+      | { width: number; height: number }
+      | undefined;
+    if (box && typeof box.width === "number" && typeof box.height === "number") {
+      const maxRadius = Math.min(box.width, box.height) / 2;
+      if (cr > maxRadius) cr = maxRadius;
+    }
+    result.borderRadius = dpString(cr);
   }
   if (hasValue("rectangleCornerRadii", node, isRectangleCornerRadii)) {
-    result.borderRadius = `${node.rectangleCornerRadii[0]}dp ${node.rectangleCornerRadii[1]}dp ${node.rectangleCornerRadii[2]}dp ${node.rectangleCornerRadii[3]}dp`;
+    result.borderRadius = [
+      dpString(node.rectangleCornerRadii[0]),
+      dpString(node.rectangleCornerRadii[1]),
+      dpString(node.rectangleCornerRadii[2]),
+      dpString(node.rectangleCornerRadii[3]),
+    ].join(" ");
   }
 };
 
