@@ -7,7 +7,7 @@ import type {
   Style,
 } from "@figma/rest-api-spec";
 import { simplifyComponents, simplifyComponentSets } from "~/transformers/component.js";
-import { dpString } from "~/utils/units.js";
+import { dpString, guessDesignDensity, setDesignDensityDivisor } from "~/utils/units.js";
 import { tagError } from "~/utils/error-meta.js";
 import type { ExtractorFn, TraversalOptions, SimplifiedDesign } from "./types.js";
 import { extractFromDesign } from "./node-walker.js";
@@ -106,6 +106,7 @@ function parseAPIResponse(data: GetFileResponse | GetFileNodesResponse) {
     const bb = (documentNode as { absoluteBoundingBox?: { width: number; height: number } })
       .absoluteBoundingBox;
     if (bb) {
+      setDesignDensityDivisor(guessDesignDensity(bb.width));
       screen = {
         width: dpString(bb.width),
         height: dpString(bb.height),
