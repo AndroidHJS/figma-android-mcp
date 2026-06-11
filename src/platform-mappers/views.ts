@@ -1,4 +1,5 @@
 import type { SimplifiedLayout } from "~/transformers/layout.js";
+import { parseDp } from "~/transformers/layout.js";
 import type { ViewsLayout } from "./types.js";
 
 /**
@@ -26,6 +27,16 @@ export function mapToViews(layout: SimplifiedLayout): ViewsLayout {
       result.gravity = [crossGravity, mainGravity]
         .filter(Boolean)
         .join("|");
+    }
+
+    // LinearLayout gravity has no vocabulary for these — they used to fall
+    // through the switch defaults and vanish. Preserve the layout intent in
+    // dedicated fields; layoutHints tell the LLM how to translate them.
+    if (layout.justifyContent === "space-between") {
+      result.mainAxisArrangement = "spaceBetween";
+    }
+    if (layout.alignItems === "stretch" || layout.alignItems === "baseline") {
+      result.crossAxisAlignment = layout.alignItems;
     }
   }
 
@@ -111,10 +122,32 @@ function applyAnchorToViews(
   if (anchor.horizontal === "stretch") result.layout_width = "match_parent";
   if (anchor.vertical === "stretch") result.layout_height = "match_parent";
 
-  if (anchor.insets?.start) result.layout_marginStart = anchor.insets.start;
-  if (anchor.insets?.top) result.layout_marginTop = anchor.insets.top;
-  if (anchor.insets?.end) result.layout_marginEnd = anchor.insets.end;
-  if (anchor.insets?.bottom) result.layout_marginBottom = anchor.insets.bottom;
+  if (!anchor.insets) return;
+
+  // Negative insets mean the child pokes past the parent's edge. A negative
+  // layout_margin gets clipped by default (clipChildren), so overhang is
+  // split into its own field with the sign flipped; the overhang policy
+  // teaches the transparent-root restore.
+  const overhang: NonNullable<ViewsLayout["anchorOverhang"]> = {};
+  const split = (value: string | undefined): { margin?: string; overhang?: string } => {
+    if (value === undefined) return {};
+    const n = parseDp(value);
+    if (n !== undefined && n < 0) return { overhang: `${Math.round(-n * 100) / 100}dp` };
+    return { margin: value };
+  };
+  const start = split(anchor.insets.start);
+  const top = split(anchor.insets.top);
+  const end = split(anchor.insets.end);
+  const bottom = split(anchor.insets.bottom);
+  if (start.margin) result.layout_marginStart = start.margin;
+  if (top.margin) result.layout_marginTop = top.margin;
+  if (end.margin) result.layout_marginEnd = end.margin;
+  if (bottom.margin) result.layout_marginBottom = bottom.margin;
+  if (start.overhang) overhang.start = start.overhang;
+  if (top.overhang) overhang.top = top.overhang;
+  if (end.overhang) overhang.end = end.overhang;
+  if (bottom.overhang) overhang.bottom = bottom.overhang;
+  if (Object.keys(overhang).length > 0) result.anchorOverhang = overhang;
 }
 
 function mapViewsMainGravity(value: string | undefined): string | undefined {
@@ -184,7 +217,8 @@ function mapViewsConstraintHorizontal(value: string): ViewsLayout["layout_constr
     case "MIN":
       return undefined;
     case "MAX":
-      return "right";
+      // "end", not "right": RTL-safe, and consistent with the Compose mapper.
+      return "end";
     case "CENTER":
       return "center";
     case "STRETCH":

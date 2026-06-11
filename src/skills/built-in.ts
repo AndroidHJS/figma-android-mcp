@@ -2,8 +2,15 @@ import type { Skill } from "./types.js";
 import {
   COMPOSE_OFFSET_RULES_ZH,
   COMPOSE_OFFSET_SELF_CHECK_ZH,
+  VIEWS_OFFSET_RULES_ZH,
+  VIEWS_SELF_CHECK_ZH,
 } from "./positioning-policy.js";
 import { OVERLAY_RULES_ZH } from "./overlay-policy.js";
+import {
+  OVERHANG_RULES_ZH,
+  OVERHANG_SELF_CHECK_COMPOSE_ZH,
+  OVERHANG_SELF_CHECK_VIEWS_ZH,
+} from "./overhang-policy.js";
 
 export const builtInSkills: Skill[] = [
   {
@@ -104,7 +111,39 @@ Compose → ✅ 父容器不设固定高度，用默认 wrapContentHeight() 或 
 
 ${COMPOSE_OFFSET_RULES_ZH}
 
+${VIEWS_OFFSET_RULES_ZH}
+
 ${OVERLAY_RULES_ZH}
+
+${OVERHANG_RULES_ZH}
+
+### android:elevation 替代 boxShadow（View 专属，高发）
+
+boxShadow 是 CSS box-shadow 语法（offsetX offsetY blur spread color），必须转为 \`<layer-list>\` drawable（\`<shape>\` 阴影层）。负 Y 偏移（如 \`0dp -3dp ...\`）表示阴影向上投——elevation 完全无法表达。
+
+- ❌ \`android:elevation="4dp"\` 模拟 boxShadow
+- ✅ \`<layer-list>\` drawable；不确定怎么转换时宁可跳过阴影，也不要用 elevation
+
+### 空 View + layout_weight 表达固定间距（View 专属）
+
+0dp + weight 占位 View **仅允许**用于 space-between 分布（布局数据带 \`mainAxisArrangement: "spaceBetween"\`）。
+
+- ❌ 用空 View + \`layout_weight="1"\` 表达设计稿里的固定间距 → ✅ 固定间距用子元素 margin
+- 使用 weight 时必须核对：对应轴尺寸为 0dp、直接父容器是 LinearLayout、orientation 与 weight 轴一致
+
+### layout_gravity 用在不支持的父容器（View 专属）
+
+\`layout_gravity\` 的语义取决于直接父容器：FrameLayout 内任意方向生效；LinearLayout 内**仅垂直于 orientation 的轴**生效（horizontal 里控制不了水平位置）；其他容器直接忽略。
+
+- ❌ \`LinearLayout(horizontal)\` 子元素用 \`layout_gravity="end"\` 想靠右（无效）
+- ✅ 先确认直接父容器类型；需要任意方向锚定时用 FrameLayout 包裹
+
+### ConstraintLayout 过度使用（View 专属）
+
+仅 3 种场景允许使用 ConstraintLayout：① 布局数据带 \`layout_constraint*\` 字段；② 3+ 子元素的 space-between 链（\`spread_inside\`）；③ 确实存在多向复杂约束。
+
+- ❌ 单个子元素套 ConstraintLayout 只为居中/右锚 → ✅ FrameLayout + \`layout_gravity\`
+- ❌ 单轴顺序排列套 ConstraintLayout → ✅ LinearLayout
 
 ### ContentScale.Fit 误用到 Figma 切图（Compose 专属，高发）
 
@@ -176,9 +215,17 @@ Android 默认的字体内边距让文本实际占高 ≠ Figma 的行高盒，�
   - 搜 \`endX\\s*=\\s*[01]?\\.\\d+f\` → 除 0f 和 1f 外需有 gradientTransform 数据支撑
   - ${COMPOSE_OFFSET_SELF_CHECK_ZH}
   - 搜 \`drawCircle\` → 全部核实：节点是否是 GRADIENT_RADIAL fill？是 → 改为 Box + Modifier.background(Brush.radialGradient(...))。仅当节点本身就是圆形矢量路径时才保留 drawCircle。
+  - ${OVERHANG_SELF_CHECK_COMPOSE_ZH}
   - 搜 \`lineHeight\\s*=\` → 每处核对是否同时设置了 \`PlatformTextStyle(includeFontPadding = false)\` 与 \`LineHeightStyle\`
 - View：grep \\\`layout_width="\\d+dp"\\\`，逐处核对是否落在白名单
-- View 额外检查：grep \`android:lineHeight\` → 每处核对是否同时设置了 \`android:includeFontPadding="false"\`
+- View 额外检查：
+  - 搜 \`android:elevation\` → 全部替换为 \`<layer-list>\` drawable 实现（或删掉阴影）；elevation 禁止用于还原 boxShadow
+  - 搜 \`layout_weight="1"\` → 逐处核对：对应轴是否 0dp、直接父容器是否 LinearLayout、orientation 是否与 weight 轴一致、用途是否 space-between/fill（固定间距改 margin）
+  - 搜 \`layout_gravity\` → 核对直接父容器：FrameLayout 任意方向有效；LinearLayout 仅垂直于 orientation 的轴有效；其他容器无效，需改写
+  - 搜 \`app:layout_constraint\` → 核对布局数据是否确实含 \`layout_constraintHorizontal/Vertical\` 字段，或属于 3+ 子元素 space-between 链；都不是 → 改 FrameLayout/LinearLayout
+  - ${VIEWS_SELF_CHECK_ZH}
+  - ${OVERHANG_SELF_CHECK_VIEWS_ZH}
+  - grep \`android:lineHeight\` → 每处核对是否同时设置了 \`android:includeFontPadding="false"\`
 
 不落白名单的，必须按上面表格重写。
 `,
@@ -383,6 +430,10 @@ const otherAssets = imageAssets.filter(a => a.category === "auto-detected");
    - 搜 \`FontWeight\\.SemiBold\` → 核实文本样式：若设计数据标注 bold / fontWeight 700，改为 \`FontWeight.Bold\`。
    - 搜 \`endX\\s*=\\s*0?\\.\\d+f\` → 除 0f 和 1f 外必须有 Figma gradientTransform 数据支撑，否则改回 1f。
    - ${COMPOSE_OFFSET_SELF_CHECK_ZH}。
+
+6. **View 专属检查（强制）**：
+   - 搜 \`android:elevation\` → boxShadow 必须用 \`<layer-list>\` drawable，不会转换就跳过阴影。
+   - ${VIEWS_SELF_CHECK_ZH}。
 
 1. **排版**：根据 \`layout\` / \`arrangement\` / \`alignment\` / \`spacing\` / \`width\` / \`height\`（或传统 View 的 \`orientation\` / \`gravity\` / \`layout_width\` / \`layout_height\`）搭骨架。优先用 get_figma_data 返回的 \`layoutHints\` 决定 Column/Row/Box 还是 ConstraintLayout。**对照效果图确认容器嵌套层次和排列方向与视觉一致，若效果图与数据矛盾，以效果图为准。**
 2. **外观**：fills（含颜色 hex）、strokes、cornerRadius、effects（阴影 / 模糊）。**以 Figma 导出数据为准**——颜色值、描边粗细、圆角半径、阴影参数都是精确数值，效果图可能因渲染/压缩产生偏差。

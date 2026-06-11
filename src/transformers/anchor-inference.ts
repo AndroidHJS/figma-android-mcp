@@ -234,6 +234,71 @@ export interface AttachmentInfo {
   insets?: { start?: string; end?: string; top?: string; bottom?: string };
 }
 
+// ---------------------------------------------------------------------------
+// Edge-straddle detection — banner riding a sheet's top edge
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimum dp a straddling child must extend on EACH side of the host edge.
+ * Below this, the "overhang" is alignment noise from px→dp rounding, not a
+ * design intent worth restructuring for.
+ */
+export const STRADDLE_MIN_DP = 8;
+
+/** ...and at least this share of the child's own height on each side. */
+export const STRADDLE_MIN_RATIO = 0.15;
+
+/**
+ * Host must be at least this many times the child's area. This is the guard
+ * against union-find transitivity chaining: negative-gap card lists have
+ * similar-size members that straddle each other's edges — without the size
+ * gate they'd merge into one mega-stack and the LLM would flatten a list
+ * into a FrameLayout.
+ */
+export const STRADDLE_HOST_AREA_RATIO = 2;
+
+/** Share of the child's width that must lie within the host's horizontal span. */
+const STRADDLE_H_CONTAINMENT = 0.8;
+
+export interface StraddleInfo {
+  side: "top" | "bottom";
+  /** How far the child extends beyond the host's edge, dp (positive). */
+  overhang: string;
+}
+
+/**
+ * True when a child rides across the host's top or bottom edge — the dialog
+ * pattern where a banner/illustration pokes above the sheet. Both stack
+ * detection gates miss it by design: the overlap strip is far below 50% of
+ * the host's area, and a near-full-width child fails the attachment size
+ * gate. Vertical edges only — horizontal straddle (stacked avatars) is a
+ * different pattern with different semantics.
+ */
+export function detectEdgeStraddle(host: Bounds, child: Bounds): StraddleInfo | undefined {
+  if (host.width * host.height < STRADDLE_HOST_AREA_RATIO * child.width * child.height) {
+    return undefined;
+  }
+
+  const hOverlap =
+    Math.min(child.x + child.width, host.x + host.width) - Math.max(child.x, host.x);
+  if (child.width <= 0 || hOverlap < STRADDLE_H_CONTAINMENT * child.width) return undefined;
+
+  const minSide = Math.max(STRADDLE_MIN_DP, STRADDLE_MIN_RATIO * child.height);
+  const childBottom = child.y + child.height;
+  const hostBottom = host.y + host.height;
+
+  // Top edge: meaningful extent both above and below host.y, and the child
+  // does not also poke out the bottom (that would be containment failure,
+  // not a straddle).
+  if (host.y - child.y >= minSide && childBottom - host.y >= minSide && childBottom <= hostBottom) {
+    return { side: "top", overhang: dp(host.y - child.y) };
+  }
+  if (childBottom - hostBottom >= minSide && hostBottom - child.y >= minSide && child.y >= host.y) {
+    return { side: "bottom", overhang: dp(childBottom - hostBottom) };
+  }
+  return undefined;
+}
+
 /** Compute where `child` sits on `host`, expressed as host-relative anchor + insets. */
 export function computeAttachment(host: Bounds, child: Bounds): AttachmentInfo {
   const h = classifyAxis(child.x - host.x, child.width, host.width);

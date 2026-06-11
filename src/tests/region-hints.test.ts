@@ -572,3 +572,76 @@ test("zero-size element does not crash and is not stacked", () => {
   // Zero-size nodeA cannot form a significant overlap with anything
   expect(allRegions.every((r) => r.mode !== "stack")).toBe(true);
 });
+
+// ============================================================================
+// Edge straddle: dialog banner riding the sheet's top edge
+// ============================================================================
+test("banner straddling a sheet emits a lone stack region with straddle attachment", () => {
+  const globalVars: GlobalVars = { styles: {} };
+
+  // Sheet 343x420 at y=200; banner 320x90 at y=160 → 40dp above the sheet top.
+  const sheet = childNode("s", "Sheet", 16, 200, 343, 420, globalVars);
+  const banner = childNode("b", "Banner", 28, 160, 320, 90, globalVars);
+
+  const parentKey = register(globalVars, makeLayout({ mode: "none" }));
+  const parent = makeNode({
+    id: "p1", name: "RetentionDialog", type: "FRAME", layout: parentKey,
+    children: [sheet, banner],
+  });
+
+  const hints = generateRegionHints([parent], globalVars);
+  expect(hints).toHaveLength(1);
+  expect(hints[0].regions).toHaveLength(1);
+
+  const region = hints[0].regions[0];
+  expect(region.mode).toBe("stack");
+  expect(region.attachments).toHaveLength(1);
+  const att = region.attachments![0];
+  expect(att.childId).toBe("b");
+  expect(att.hostId).toBe("s");
+  expect(att.role).toBe("straddle");
+  expect(att.overhang).toBe("40dp");
+});
+
+test("negative-gap card list does not merge into a mega-stack", () => {
+  const globalVars: GlobalVars = { styles: {} };
+  // Three same-size cards, each overlapping the next by 10dp.
+  const c1 = childNode("1", "Card1", 0, 0, 300, 120, globalVars);
+  const c2 = childNode("2", "Card2", 0, 110, 300, 120, globalVars);
+  const c3 = childNode("3", "Card3", 0, 220, 300, 120, globalVars);
+
+  const parentKey = register(globalVars, makeLayout({ mode: "none" }));
+  const parent = makeNode({
+    id: "p1", name: "List", type: "FRAME", layout: parentKey,
+    children: [c1, c2, c3],
+  });
+
+  const hints = generateRegionHints([parent], globalVars);
+  // Cards must not become one stack region via straddle transitivity.
+  const stack = hints[0]?.regions.find((r) => r.mode === "stack");
+  expect(stack).toBeUndefined();
+});
+
+test("dialog overlay children still get region analysis; toasts stay excluded", () => {
+  const globalVars: GlobalVars = { styles: {} };
+
+  const sheet = childNode("s", "Sheet", 16, 200, 343, 420, globalVars);
+  const banner = childNode("b", "Banner", 28, 160, 320, 90, globalVars);
+  sheet.overlayRole = "dialog";
+  banner.overlayRole = "dialog";
+  const toast = childNode("t", "Toast", 100, 50, 150, 40, globalVars);
+  toast.overlayRole = "toast";
+
+  const parentKey = register(globalVars, makeLayout({ mode: "none" }));
+  const parent = makeNode({
+    id: "p1", name: "Screen", type: "FRAME", layout: parentKey,
+    children: [sheet, banner, toast],
+  });
+
+  const hints = generateRegionHints([parent], globalVars);
+  expect(hints).toHaveLength(1);
+  const region = hints[0].regions[0];
+  expect(region.mode).toBe("stack");
+  expect(region.childIds.sort()).toEqual(["b", "s"]);
+  expect(region.childIds).not.toContain("t");
+});

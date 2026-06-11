@@ -30,6 +30,13 @@ export interface SimplifiedLayout {
     vertical?: "fixed" | "fill" | "hug";
   };
   overflowScroll?: ("x" | "y")[];
+  /**
+   * Present only when false: this frame does NOT clip overflowing children,
+   * so child overhang (negative insets) is visible by design and must be
+   * restored. Absent means the Figma default (clip) — overflow is invisible
+   * in the design and must NOT be "helpfully" un-clipped.
+   */
+  clipsContent?: false;
   position?: "absolute";
   constraints?: {
     horizontal: "MIN" | "MAX" | "CENTER" | "STRETCH" | "SCALE";
@@ -206,6 +213,8 @@ function buildSimplifiedFrameValues(n: FigmaDocumentNode): SimplifiedLayout | { 
   if (n.overflowDirection?.includes("HORIZONTAL")) overflowScroll.push("x");
   if (n.overflowDirection?.includes("VERTICAL")) overflowScroll.push("y");
   if (overflowScroll.length > 0) frameValues.overflowScroll = overflowScroll;
+
+  if (n.clipsContent === false) frameValues.clipsContent = false;
 
   if (frameValues.mode === "none") {
     return frameValues;

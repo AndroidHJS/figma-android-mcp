@@ -10,6 +10,7 @@ import type { ChildLayoutData } from "~/transformers/layout.js";
 import {
   isAttachment,
   computeAttachment,
+  detectEdgeStraddle,
   type AttachmentInfo,
 } from "~/transformers/anchor-inference.js";
 
@@ -55,7 +56,15 @@ export interface RegionGroup {
     childId: string;
     childName: string;
     hostId: string;
-    role?: "background";
+    role?: "background" | "straddle";
+    /**
+     * role="straddle" only: how far the child extends BEYOND the host's edge
+     * (which edge: see `anchor`), dp. Restore via the overhang policy —
+     * transparent root + sibling offset. Never clip it away, never drop the
+     * child, and if its image asset wasn't downloaded, place the solid-color
+     * placeholder at this exact straddle position.
+     */
+    overhang?: string;
   } & AttachmentInfo)[];
 }
 
@@ -133,7 +142,20 @@ function processParent(parent: SimplifiedNode, globalVars: GlobalVars): RegionHi
     const attachments: NonNullable<RegionGroup["attachments"]> = [];
     for (const d of group) {
       if (d === host) continue;
-      if (isAttachment(host, d)) {
+      // Straddle is checked before plain attachment: a child can satisfy
+      // both (the dialog-illustration case), and the straddle entry carries
+      // strictly more information (the overhang amount).
+      const straddle = detectEdgeStraddle(host, d);
+      if (straddle) {
+        attachments.push({
+          childId: d.node.id,
+          childName: d.node.name,
+          hostId: host.node.id,
+          role: "straddle",
+          overhang: straddle.overhang,
+          ...computeAttachment(host, d),
+        });
+      } else if (isAttachment(host, d)) {
         attachments.push({
           childId: d.node.id,
           childName: d.node.name,
@@ -191,8 +213,13 @@ function processParent(parent: SimplifiedNode, globalVars: GlobalVars): RegionHi
     }
   }
 
-  // Step F: only emit when at least 2 regions
-  if (regions.length < 2) return null;
+  // Step F: only emit when at least 2 regions — except a lone stack with
+  // attachments (e.g. a dialog that is exactly banner + sheet): the container
+  // choice, z-order, and straddle/attachment data are the whole point there,
+  // and skipping the hint is what left dialogs structureless.
+  if (regions.length < 2 && !regions.some((r) => r.mode === "stack" && r.attachments?.length)) {
+    return null;
+  }
 
   return {
     parentId: parent.id,
@@ -208,8 +235,14 @@ function collectEligible(
   const result: ChildDatum[] = [];
   for (const child of children) {
     if (!child.layout) continue;
-    // Transient overlays must not be grouped with the static content they cover.
-    if (child.overlayRole) continue;
+    // Toasts must not be grouped with the static content they float over —
+    // their position comes from the toast/snackbar API. Dialog content, by
+    // contrast, DOES need internal structure analysis: after processDialog
+    // the scrim and backdrop are removed, so dialog siblings can only group
+    // with each other, and skipping them left the most fidelity-sensitive
+    // part of the screen without hints. (Anchor inference still skips dialog
+    // nodes — their screen position belongs to the dialog API, not margins.)
+    if (child.overlayRole === "toast") continue;
     const layout = globalVars.styles[child.layout] as SimplifiedLayout | undefined;
     if (!layout || !layout.locationRelativeToParent) continue;
     if (layout.position === "absolute") continue;
@@ -285,6 +318,16 @@ function isBackgroundLayer(d: ChildDatum, host: ChildDatum, group: ChildDatum[])
   return group.some((m, i) => i > idx && m !== host && overlapArea(m, d) > 0);
 }
 
+/**
+ * Order-agnostic straddle test for stack grouping: the larger element is the
+ * host candidate. The size gate inside detectEdgeStraddle keeps similar-size
+ * siblings (negative-gap lists) from chaining into one mega-stack.
+ */
+function straddles(a: ChildDatum, b: ChildDatum): boolean {
+  const [host, rider] = a.width * a.height >= b.width * b.height ? [a, b] : [b, a];
+  return detectEdgeStraddle(host, rider) !== undefined;
+}
+
 function isSignificantOverlap(a: ChildDatum, b: ChildDatum): boolean {
   const area = overlapArea(a, b);
   if (area <= 0) return false;
@@ -303,7 +346,8 @@ function buildStackGroups(eligible: ChildDatum[]): ChildDatum[][] {
     for (let j = i + 1; j < eligible.length; j++)
       if (
         isSignificantOverlap(eligible[i], eligible[j]) ||
-        isAttachment(eligible[i], eligible[j])
+        isAttachment(eligible[i], eligible[j]) ||
+        straddles(eligible[i], eligible[j])
       )
         union(i, j);
 

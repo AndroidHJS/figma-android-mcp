@@ -17,7 +17,11 @@ import {
 } from "~/services/get-figma-data-metrics.js";
 import { type Platform, mapLayoutStyles } from "~/platform-mappers/index.js";
 import type { Skill } from "~/skills/types.js";
-import { COMPOSE_ABSOLUTE_POSITIONING_HINT } from "~/skills/positioning-policy.js";
+import {
+  COMPOSE_ABSOLUTE_POSITIONING_HINT,
+  VIEWS_ABSOLUTE_POSITIONING_HINT,
+} from "~/skills/positioning-policy.js";
+import { OVERHANG_HINT_COMPOSE, OVERHANG_HINT_VIEWS } from "~/skills/overhang-policy.js";
 import {
   inferAutoLayoutFromPositions,
   convertFixedChildrenToFillMax,
@@ -52,12 +56,23 @@ export function generateLayoutHints(screen: { width: string; height: string }, p
       `When node height does NOT equal ${h}: Use the dp value as-is.`,
       `When both equal screen dimensions: Use layout_width="match_parent" layout_height="match_parent".`,
       `For content centered in a parent and narrower than the parent: Use layout_gravity="center" layout_width="match_parent" with paddingLeft/paddingRight instead of layout_width="Wdp" + layout_gravity="center", where padding = (parentWidth - childWidth) / 2.`,
-      `Parent container: Use FrameLayout as the root container. Child views are positioned via layout_marginStart/layout_marginTop.`,
+      // The positioning ladder replaces the old "FrameLayout as root container"
+      // hint, which contradicted it (margins-first vs structure-first) — two
+      // competing rules in one context is the exact failure positioning-policy.ts
+      // was created to fix.
+      VIEWS_ABSOLUTE_POSITIONING_HINT,
       `ANCHORED ELEMENTS: When a node's layout has layoutGravity (server-inferred anchor) with layout_margin* values, position it with android:layout_gravity plus exactly those margins inside a FrameLayout. Do NOT re-derive layout_marginStart/Top from raw coordinates for such nodes.`,
       `CRITICAL — ConstraintLayout usage: ONLY add app:layout_constraint* attributes when the node's layout data explicitly contains layout_constraintHorizontal or layout_constraintVertical. If these keys are absent from the layout, place the View in a FrameLayout using ONLY layout_width, layout_height, layout_marginStart, and layout_marginTop — never add ConstraintLayout attributes to such nodes.`,
       `Centering without ConstraintLayout: When a node has layout_constraintHorizontal: "center" but no other constraint keys, use android:layout_gravity="center_horizontal" inside a FrameLayout instead of ConstraintLayout.`,
       `FILL CHILD IN HORIZONTAL LINEARLAYOUT: When a child inside a LinearLayout with orientation="horizontal" has layout_width="match_parent" or fill sizing, use android:layout_width="0dp" android:layout_weight="1" instead.`,
-      `RIGHT-ANCHORED ELEMENTS: When a node has layout_constraintHorizontal: "MAX", in a FrameLayout use android:layout_gravity="end" with android:layout_marginEnd="Ndp". Do NOT use a fixed width + marginStart to simulate right-alignment.`,
+      `RIGHT-ANCHORED ELEMENTS: When a node has layout_constraintHorizontal: "end", in a FrameLayout use android:layout_gravity="end" with android:layout_marginEnd="Ndp". Do NOT use a fixed width + marginStart to simulate right-alignment.`,
+      `SPACE-BETWEEN (mainAxisArrangement: "spaceBetween"): LinearLayout cannot express this natively. For exactly 2 children: first child as-is, second child pushed via an empty View with layout_width="0dp" layout_weight="1" between them (vertical: layout_height="0dp"). For 3+ children: prefer ConstraintLayout with a chain (app:layout_constraintHorizontal_chainStyle="spread_inside"). Do NOT approximate with hardcoded margins computed from the baseline design width.`,
+      `CROSS-AXIS (crossAxisAlignment): "stretch" → each child fills the cross axis: layout_height="match_parent" in a horizontal LinearLayout, layout_width="match_parent" in a vertical one. "baseline" → horizontal LinearLayout aligns text baselines by default (android:baselineAligned="true"); do NOT disable it and do NOT simulate baselines with margins.`,
+      `IMAGE SCALING: Downloaded Figma images are rendered PNGs at specific dp dimensions. Use android:scaleType="fitXY" so the image fills its ImageView exactly. Do NOT use fitCenter/centerInside — they preserve aspect ratio and leave gaps when the intrinsic ratio differs from the target size.`,
+      `FONT WEIGHT: When text style indicates "bold" or fontWeight is 700, use android:textStyle="bold". Do NOT substitute a medium/semibold font family unless the design data explicitly specifies it.`,
+      `GRADIENT: A gradient is the FILL of a shape, NOT a separate element. Implement as a <shape> drawable with a <gradient> child (angle from the CSS direction, startColor/endColor from the stops; radial → android:type="radial") plus <corners> for the node's cornerRadius, set via android:background. Do NOT create a separate View for the gradient and do NOT ignore it. The CSS gradient string's "circle"/"ellipse" keywords describe color spread, not widget geometry.`,
+      `Z-ORDER IN FRAMELAYOUT: children render in declaration order — later children draw on top. When translating a Figma frame where children overlap, declare underlay/background elements first, overlay/foreground elements last, matching the Figma z-order. Do NOT use android:elevation to fix stacking.`,
+      OVERHANG_HINT_VIEWS,
       `Effects — NEVER use android:elevation: boxShadow values use CSS box-shadow syntax (offsetX offsetY blur spread color). They MUST be implemented as Android drawable resources (<layer-list> with <shape> for the shadow layer), not as android:elevation. Specifically: a negative Y offset (e.g., 0dp -3dp ...) means the shadow casts UPWARD — elevation cannot express this. If you are unsure how to convert a boxShadow to a drawable, skip the shadow entirely rather than using elevation.`,
     ];
   }
@@ -71,13 +86,14 @@ export function generateLayoutHints(screen: { width: string; height: string }, p
     `When both width and height equal screen dimensions: Use .fillMaxSize() instead of .size(${wNum}.dp, ${hNum}.dp).`,
     `For content centered in a parent and narrower than the parent: Use .fillMaxWidth().padding(horizontal = M.dp) instead of .width(W.dp) + Alignment.CenterHorizontally, where M = (parentWidth - childWidth) / 2.`,
     `FILL CHILD IN ROW: When a node's layout has width: "fillMax" (horizontal sizing = fill) and its parent is a Row, use Modifier.weight(1f) instead of a fixed .width(X.dp). weight(1f) must be inside RowScope. Children without fill sizing keep their fixed width.`,
-    `RIGHT-ANCHORED ELEMENTS: When a node's layout has horizontalConstraint: "MAX", place it inside a Box and use Modifier.align(Alignment.CenterEnd).padding(end = N.dp). Do NOT offset or marginStart to simulate right-alignment.`,
+    `RIGHT-ANCHORED ELEMENTS: When a node's layout has horizontalConstraint: "end", place it inside a Box and use Modifier.align(Alignment.CenterEnd).padding(end = N.dp). Do NOT offset or marginStart to simulate right-alignment.`,
     // High-fidelity Compose rules — prevents the most common AI mistakes in Compose code generation
     COMPOSE_ABSOLUTE_POSITIONING_HINT,
     `IMAGE SCALING: Downloaded Figma images are rendered PNGs at specific dp dimensions. Use ContentScale.FillBounds to make the image fill its container exactly (equivalent to ImageView scaleType="fitXY"). Do NOT use ContentScale.Fit — it preserves aspect ratio and will leave gaps when the image's intrinsic ratio differs from the target container size.`,
     `FONT WEIGHT: When text style indicates "bold" or fontWeight is 700, use FontWeight.Bold (weight = 700). Do NOT use FontWeight.SemiBold (weight = 600) unless the design data explicitly specifies semi-bold or fontWeight 600.`,
     `GRADIENT: Map Figma gradient fills to Compose Brush. A gradient is a FILL of a shape, NOT a separate drawn element. - LINEAR → Brush.horizontalGradient(colors, startX=0f, endX=1f). Only set endX < 1f when Figma gradientTransform data explicitly shows a compressed range. - RADIAL → Brush.radialGradient(colors). Apply via Modifier.background(brush, shape). The node's own width/height/cornerRadius define the SHAPE; the radial gradient just fills it. Do NOT draw a separate circle — do NOT use Canvas, drawCircle, or any manual shape drawing for gradient fills. - The CSS gradient string (e.g. "radial-gradient(circle at ...)") describes the fill's internal color interpolation, NOT the node's geometry. Ignore "circle" / "ellipse" keywords — they refer to gradient spread shape, not the widget shape.`,
     `Z-ORDER IN BOX: Compose Box draws children in declaration order — later children render on top. When translating a Figma frame where some children overlap others, declare underlay/background elements first, overlay/foreground elements last. Check offset values — a child with a larger offset.y may still need to be behind a child with a smaller offset.y if the Figma z-order says so.`,
+    OVERHANG_HINT_COMPOSE,
   ];
 }
 

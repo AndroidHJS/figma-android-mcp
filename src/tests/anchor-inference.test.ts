@@ -4,6 +4,7 @@ import {
   inferAnchors,
   isAttachment,
   computeAttachment,
+  detectEdgeStraddle,
 } from "~/transformers/anchor-inference.js";
 import { generateRegionHints } from "~/transformers/region-hints.js";
 import { mapToCompose } from "~/platform-mappers/compose.js";
@@ -172,5 +173,52 @@ describe("attachment detection", () => {
       hostId: "1:10",
       anchor: "bottomEnd",
     });
+  });
+});
+
+// ============================================================================
+// detectEdgeStraddle — banner/illustration riding a host's edge
+// ============================================================================
+describe("detectEdgeStraddle", () => {
+  // Dialog sheet 343x420 with a banner 320x90 poking 40dp above its top edge.
+  const sheet = { x: 16, y: 200, width: 343, height: 420 };
+
+  it("detects a banner straddling the host's top edge", () => {
+    const banner = { x: 28, y: 160, width: 320, height: 90 };
+    const result = detectEdgeStraddle(sheet, banner);
+    expect(result).toEqual({ side: "top", overhang: "40dp" });
+  });
+
+  it("detects a bottom-edge straddle symmetrically", () => {
+    const tag = { x: 100, y: 590, width: 160, height: 60 }; // 30 in, 30 out
+    const result = detectEdgeStraddle(sheet, tag);
+    expect(result).toEqual({ side: "bottom", overhang: "30dp" });
+  });
+
+  it("rejects similar-size siblings (negative-gap card list guard)", () => {
+    const cardA = { x: 0, y: 0, width: 300, height: 120 };
+    const cardB = { x: 0, y: 110, width: 300, height: 120 }; // overlaps 10dp
+    expect(detectEdgeStraddle(cardA, cardB)).toBeUndefined();
+    expect(detectEdgeStraddle(cardB, cardA)).toBeUndefined();
+  });
+
+  it("rejects sub-threshold pokes (alignment noise)", () => {
+    const chip = { x: 100, y: 196, width: 100, height: 40 }; // only 4dp above
+    expect(detectEdgeStraddle(sheet, chip)).toBeUndefined();
+  });
+
+  it("rejects fully contained children", () => {
+    const inner = { x: 40, y: 260, width: 200, height: 80 };
+    expect(detectEdgeStraddle(sheet, inner)).toBeUndefined();
+  });
+
+  it("rejects children mostly outside the host horizontally", () => {
+    const off = { x: 300, y: 160, width: 200, height: 90 }; // pokes out the right side
+    expect(detectEdgeStraddle(sheet, off)).toBeUndefined();
+  });
+
+  it("rejects a child poking out both top and bottom", () => {
+    const tall = { x: 100, y: 180, width: 150, height: 470 };
+    expect(detectEdgeStraddle(sheet, tall)).toBeUndefined();
   });
 });

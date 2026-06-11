@@ -250,6 +250,38 @@ describe("mapToViews", () => {
     });
   });
 
+  describe("arrangement/alignment beyond gravity vocabulary", () => {
+    test("space-between → mainAxisArrangement (was silently dropped)", () => {
+      const result = mapToViews(makeLayout({
+        mode: "row",
+        justifyContent: "space-between",
+      }));
+      expect(result.mainAxisArrangement).toBe("spaceBetween");
+      expect(result.gravity).toBeUndefined();
+    });
+    test("stretch → crossAxisAlignment", () => {
+      expect(mapToViews(makeLayout({
+        mode: "row",
+        alignItems: "stretch",
+      })).crossAxisAlignment).toBe("stretch");
+    });
+    test("baseline → crossAxisAlignment", () => {
+      expect(mapToViews(makeLayout({
+        mode: "row",
+        alignItems: "baseline",
+      })).crossAxisAlignment).toBe("baseline");
+    });
+    test("plain center emits neither field", () => {
+      const result = mapToViews(makeLayout({
+        mode: "row",
+        justifyContent: "center",
+        alignItems: "center",
+      }));
+      expect(result.mainAxisArrangement).toBeUndefined();
+      expect(result.crossAxisAlignment).toBeUndefined();
+    });
+  });
+
   describe("layoutGravity (alignSelf)", () => {
     test("flex-start in row → top", () => {
       expect(mapToViews(makeLayout({
@@ -315,12 +347,12 @@ describe("mapToViews", () => {
       expect(result.layout_constraintHorizontal).toBeUndefined();
       expect(result.layout_constraintVertical).toBeUndefined();
     });
-    test("MAX → right / bottom", () => {
+    test("MAX → end / bottom (RTL-safe, matches Compose mapper)", () => {
       const result = mapToViews(makeLayout({
         mode: "none",
         constraints: { horizontal: "MAX", vertical: "MAX" },
       }));
-      expect(result.layout_constraintHorizontal).toBe("right");
+      expect(result.layout_constraintHorizontal).toBe("end");
       expect(result.layout_constraintVertical).toBe("bottom");
     });
     test("CENTER → center", () => {
@@ -405,5 +437,48 @@ describe("mapLayoutStyles", () => {
     mapLayoutStyles(globalVars, "compose");
     expect(globalVars.styles.fill_ABC).toEqual({ type: "SOLID" });
     expect(globalVars.styles.style_DEF).toEqual({ fontSize: "14sp" });
+  });
+});
+
+// ============================================================================
+// anchorOverhang: negative insets never become negative padding/margin
+// ============================================================================
+describe("anchor overhang split", () => {
+  const layoutWithNegativeTop = {
+    mode: "none",
+    anchor: {
+      horizontal: "center",
+      vertical: "top",
+      insets: { top: "-40dp" },
+    },
+  } as unknown as SimplifiedLayout;
+
+  test("compose: negative inset → anchorOverhang, no negative padding", () => {
+    const result = mapToCompose(layoutWithNegativeTop);
+    expect(result.anchorOverhang).toEqual({ top: "40dp" });
+    expect(result.anchorMargin).toBeUndefined();
+  });
+
+  test("views: negative inset → anchorOverhang, no negative margin", () => {
+    const result = mapToViews(layoutWithNegativeTop);
+    expect(result.anchorOverhang).toEqual({ top: "40dp" });
+    expect(result.layout_marginTop).toBeUndefined();
+  });
+
+  test("mixed insets split per side", () => {
+    const layout = {
+      mode: "none",
+      anchor: {
+        horizontal: "end",
+        vertical: "top",
+        insets: { top: "-24dp", end: "16dp" },
+      },
+    } as unknown as SimplifiedLayout;
+    const compose = mapToCompose(layout);
+    expect(compose.anchorOverhang).toEqual({ top: "24dp" });
+    expect(compose.anchorMargin).toEqual({ end: "16dp" });
+    const views = mapToViews(layout);
+    expect(views.anchorOverhang).toEqual({ top: "24dp" });
+    expect(views.layout_marginEnd).toBe("16dp");
   });
 });

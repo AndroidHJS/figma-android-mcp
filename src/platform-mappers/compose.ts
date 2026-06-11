@@ -1,5 +1,6 @@
 import type { SimplifiedLayout } from "~/transformers/layout.js";
-import type { ComposeLayout } from "./types.js";
+import { parseDp } from "~/transformers/layout.js";
+import type { ComposeLayout, ComposePadding } from "./types.js";
 
 /**
  * Map a CSS-flex `SimplifiedLayout` to Android Jetpack Compose-native fields.
@@ -110,7 +111,20 @@ function applyAnchorToCompose(
   if (anchor.vertical === "stretch") result.height = "fillMax";
 
   if (anchor.insets) {
-    result.anchorMargin = { ...anchor.insets };
+    // Negative insets mean the child pokes past the parent's edge. Compose
+    // padding crashes on negative values, so overhang is split into its own
+    // field with the sign flipped; the overhang policy teaches the restore.
+    const margin: ComposePadding = {};
+    const overhang: ComposePadding = {};
+    for (const side of ["start", "top", "end", "bottom"] as const) {
+      const value = anchor.insets[side];
+      if (value === undefined) continue;
+      const n = parseDp(value);
+      if (n !== undefined && n < 0) overhang[side] = `${Math.round(-n * 100) / 100}dp`;
+      else margin[side] = value;
+    }
+    if (Object.keys(margin).length > 0) result.anchorMargin = margin;
+    if (Object.keys(overhang).length > 0) result.anchorOverhang = overhang;
   }
 }
 

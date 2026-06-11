@@ -82,7 +82,7 @@ describe("result serialization", () => {
           "When both width and height equal screen dimensions: Use .fillMaxSize() instead of .size(375.dp, 822.dp).",
           "For content centered in a parent and narrower than the parent: Use .fillMaxWidth().padding(horizontal = M.dp) instead of .width(W.dp) + Alignment.CenterHorizontally, where M = (parentWidth - childWidth) / 2.",
           "FILL CHILD IN ROW: When a node's layout has width: \"fillMax\" (horizontal sizing = fill) and its parent is a Row, use Modifier.weight(1f) instead of a fixed .width(X.dp). weight(1f) must be inside RowScope. Children without fill sizing keep their fixed width.",
-          "RIGHT-ANCHORED ELEMENTS: When a node's layout has horizontalConstraint: \"MAX\", place it inside a Box and use Modifier.align(Alignment.CenterEnd).padding(end = N.dp). Do NOT offset or marginStart to simulate right-alignment.",
+          "RIGHT-ANCHORED ELEMENTS: When a node's layout has horizontalConstraint: \"end\", place it inside a Box and use Modifier.align(Alignment.CenterEnd).padding(end = N.dp). Do NOT offset or marginStart to simulate right-alignment.",
         ],
       };
 
