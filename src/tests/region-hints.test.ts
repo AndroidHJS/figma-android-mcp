@@ -427,10 +427,93 @@ test("stack and column regions coexist", () => {
   const stack = hints[0].regions.find((r) => r.mode === "stack");
   expect(stack).toBeDefined();
   expect(stack!.childIds).toEqual(["bg", "overlay"]);
+  // z-order is an explicit field, not an implicit array-order convention
+  expect(stack!.zOrder).toContain("bottom→top");
 
   const col = hints[0].regions.find((r) => r.mode === "column");
   expect(col).toBeDefined();
   expect(col!.childIds).toEqual(["title", "body"]);
+  expect(col!.zOrder).toBeUndefined();
+});
+
+// ============================================================================
+// Test 12.5: Contained RECTANGLE painted over by content → background attachment
+// ============================================================================
+test("contained RECTANGLE painted over by content becomes a background attachment", () => {
+  const globalVars: GlobalVars = { styles: {} };
+
+  // Card host 360x200. Inner data-area bg 328x100 — too large for the
+  // attachment size-disparity gate (area ratio 0.456 > 0.3) but fully
+  // contained, with the Amount text painted on top of it.
+  const card = childNode("card", "CardBg", 0, 0, 360, 200, globalVars);
+  const innerLayout = makeLayout({
+    locationRelativeToParent: { x: "16dp", y: "90dp" },
+    dimensions: { width: "328dp", height: "100dp" },
+  });
+  const innerBg = makeNode({
+    id: "inner",
+    name: "DataAreaBg",
+    type: "RECTANGLE",
+    layout: register(globalVars, innerLayout),
+  });
+  const amount = childNode("amount", "Amount", 24, 110, 100, 20, globalVars);
+  // Footer → second region so the hint is emitted
+  const footer = childNode("footer", "Footer", 0, 220, 360, 56, globalVars);
+
+  const parentKey = register(globalVars, makeLayout());
+  const parent = makeNode({
+    id: "p1",
+    name: "Screen",
+    type: "FRAME",
+    layout: parentKey,
+    children: [card, innerBg, amount, footer],
+  });
+
+  const hints = generateRegionHints([parent], globalVars);
+  expect(hints).toHaveLength(1);
+
+  const stack = hints[0].regions.find((r) => r.mode === "stack");
+  expect(stack).toBeDefined();
+  expect(stack!.childIds).toEqual(["card", "inner", "amount"]);
+
+  const bg = stack!.attachments?.find((a) => a.childId === "inner");
+  expect(bg).toBeDefined();
+  expect(bg!.role).toBe("background");
+  expect(bg!.hostId).toBe("card");
+
+  // The text riding on the inner bg keeps its normal (role-less) attachment.
+  const text = stack!.attachments?.find((a) => a.childId === "amount");
+  expect(text).toBeDefined();
+  expect(text!.role).toBeUndefined();
+});
+
+// ============================================================================
+// Test 12.6: Contained non-RECTANGLE is never marked as background
+// ============================================================================
+test("contained non-RECTANGLE is not marked as background", () => {
+  const globalVars: GlobalVars = { styles: {} };
+
+  // Same geometry as 12.5 but the inner layer is a FRAME — could be
+  // foreground content, so geometry alone must not flag it.
+  const card = childNode("card", "CardBg", 0, 0, 360, 200, globalVars);
+  const inner = childNode("inner", "InnerPanel", 16, 90, 328, 100, globalVars);
+  const amount = childNode("amount", "Amount", 24, 110, 100, 20, globalVars);
+  const footer = childNode("footer", "Footer", 0, 220, 360, 56, globalVars);
+
+  const parentKey = register(globalVars, makeLayout());
+  const parent = makeNode({
+    id: "p1",
+    name: "Screen",
+    type: "FRAME",
+    layout: parentKey,
+    children: [card, inner, amount, footer],
+  });
+
+  const hints = generateRegionHints([parent], globalVars);
+  const stack = hints[0].regions.find((r) => r.mode === "stack");
+  expect(stack).toBeDefined();
+  expect(stack!.childIds).toContain("inner");
+  expect(stack!.attachments?.some((a) => a.childId === "inner")).toBe(false);
 });
 
 // ============================================================================

@@ -109,6 +109,20 @@ describe("inferAnchors", () => {
     expect(childLayout(globalVars, childNodes[0]).anchor).toBeUndefined();
   });
 
+  it("skips low-confidence anchors — element floating mid-space keeps raw coordinates", () => {
+    // 1543dp-tall screen; child at y=900 → 580dp from the bottom, 900dp from
+    // the top. The nearest edge is "bottom" but the inset exceeds parent×1/3,
+    // so the anchor would mislead more than help — none is emitted.
+    const { nodes, globalVars, childNodes } = build(noneParent(375, 1543), [
+      absChild(32, 900, 311, 63),
+    ]);
+    inferAnchors(nodes, globalVars);
+
+    const layout = childLayout(globalVars, childNodes[0]);
+    expect(layout.anchor).toBeUndefined();
+    expect(layout.locationRelativeToParent).toBeDefined();
+  });
+
   it("clones shared layout styles instead of mutating them", () => {
     const shared = absChild(297, 24, 48, 48);
     const { nodes, globalVars, childNodes } = build(noneParent(375, 200), [shared]);

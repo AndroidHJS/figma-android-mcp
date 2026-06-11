@@ -36,11 +36,27 @@ export interface RegionGroup {
   /** For viewsContainer="LinearLayout", the orientation to use. */
   viewsOrientation?: "horizontal" | "vertical";
   /**
+   * Stack regions only. childIds order = Figma z-order (bottom→top) — an
+   * implicit convention the LLM routinely misses, so it is spelled out in the
+   * serialized output rather than left as a code comment.
+   */
+  zOrder?: string;
+  /**
    * Small elements riding on the region's largest member (avatar + VIP badge).
    * Render each inside the host's Box/FrameLayout, aligned to `anchor` with
    * `insets` — not as independent absolutely-positioned siblings.
+   *
+   * `role: "background"` marks a content-area background layer: a RECTANGLE
+   * fully inside the host with other content painted on top of it. It MUST be
+   * rendered (a Box/View with the rectangle's fill, behind the content that
+   * covers it) — it is functional UI, not skippable decoration.
    */
-  attachments?: ({ childId: string; childName: string; hostId: string } & AttachmentInfo)[];
+  attachments?: ({
+    childId: string;
+    childName: string;
+    hostId: string;
+    role?: "background";
+  } & AttachmentInfo)[];
 }
 
 export interface RegionHint {
@@ -106,20 +122,40 @@ function processParent(parent: SimplifiedNode, globalVars: GlobalVars): RegionHi
       childNames: group.map((d) => d.node.name),
       composeContainer: "Box",
       viewsContainer: "FrameLayout",
+      zOrder:
+        "childIds are listed bottom→top — declare children in exactly this order so later ones draw on top",
     };
 
     // Attachment annotation: small members riding on the group's largest
     // member get a host-relative anchor so the LLM nests them with the host
     // instead of positioning them independently from the region root.
     const host = group.reduce((a, b) => (a.width * a.height >= b.width * b.height ? a : b));
-    const attachments = group
-      .filter((d) => d !== host && isAttachment(host, d))
-      .map((d) => ({
-        childId: d.node.id,
-        childName: d.node.name,
-        hostId: host.node.id,
-        ...computeAttachment(host, d),
-      }));
+    const attachments: NonNullable<RegionGroup["attachments"]> = [];
+    for (const d of group) {
+      if (d === host) continue;
+      if (isAttachment(host, d)) {
+        attachments.push({
+          childId: d.node.id,
+          childName: d.node.name,
+          hostId: host.node.id,
+          ...computeAttachment(host, d),
+        });
+      } else if (isBackgroundLayer(d, host, group)) {
+        // Content-area backgrounds (e.g. an inner data-panel rectangle inside
+        // a card) fail isAttachment's size-disparity gate by design — they are
+        // too large relative to the host. Without an attachment entry the LLM
+        // sees only a bare RECTANGLE and routinely drops it, losing a visible
+        // surface. Containment + being painted over is a stronger signal of
+        // "background layer" than size disparity, so it gets its own check.
+        attachments.push({
+          childId: d.node.id,
+          childName: d.node.name,
+          hostId: host.node.id,
+          role: "background",
+          ...computeAttachment(host, d),
+        });
+      }
+    }
     if (attachments.length > 0) region.attachments = attachments;
 
     regions.push(region);
@@ -217,6 +253,36 @@ function overlapArea(a: ChildDatum, b: ChildDatum): number {
   const dx = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
   const dy = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
   return dx > 0 && dy > 0 ? dx * dy : 0;
+}
+
+/**
+ * Containment tolerance (dp). Coordinates pass through px→dp conversion and
+ * rounding, so an edge-flush inner rectangle can mathematically poke a
+ * fraction of a dp outside its host.
+ */
+const CONTAINMENT_TOLERANCE = 2;
+
+function isContained(host: ChildDatum, d: ChildDatum): boolean {
+  return (
+    d.x >= host.x - CONTAINMENT_TOLERANCE &&
+    d.y >= host.y - CONTAINMENT_TOLERANCE &&
+    d.x + d.width <= host.x + host.width + CONTAINMENT_TOLERANCE &&
+    d.y + d.height <= host.y + host.height + CONTAINMENT_TOLERANCE
+  );
+}
+
+/**
+ * A background layer is a RECTANGLE fully inside the host that other group
+ * members are painted over (group order preserves Figma z-order, bottom→top,
+ * so only members AFTER it in the group can cover it). Restricted to
+ * RECTANGLE because that is the only type whose role is unambiguous from
+ * geometry alone — a contained FRAME or IMAGE may be foreground content.
+ */
+function isBackgroundLayer(d: ChildDatum, host: ChildDatum, group: ChildDatum[]): boolean {
+  if (d.node.type !== "RECTANGLE") return false;
+  if (!isContained(host, d)) return false;
+  const idx = group.indexOf(d);
+  return group.some((m, i) => i > idx && m !== host && overlapArea(m, d) > 0);
 }
 
 function isSignificantOverlap(a: ChildDatum, b: ChildDatum): boolean {

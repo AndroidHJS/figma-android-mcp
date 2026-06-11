@@ -103,6 +103,25 @@ export function spString(pxValue: number): string {
 }
 
 /**
+ * Convert a letter-spacing px value to an em string relative to the font size.
+ *
+ * Em is the one unit both Android stacks consume directly — View's
+ * `android:letterSpacing` is an em multiplier and Compose accepts
+ * `TextUnit.Em` — so emitting em removes a unit conversion the LLM would
+ * otherwise have to perform (and routinely gets wrong, e.g. copying a "2%"
+ * string into a `.sp` field).
+ *
+ * Three decimals, not pixelRound's two: 0.5px tracking on a 14px font is
+ * 0.0357em, and rounding that to 0.04 is a 12% error — visible in dense text.
+ *
+ * Density-independent: both inputs are px at the same design density, so the
+ * divisor cancels out of the ratio.
+ */
+export function emString(letterSpacingPx: number, fontSizePx: number): string {
+  return `${Number((letterSpacingPx / fontSizePx).toFixed(3))}em`;
+}
+
+/**
  * Android density buckets and their scale factors relative to 1× (mdpi).
  */
 export const ANDROID_DENSITIES: Record<string, number> = {

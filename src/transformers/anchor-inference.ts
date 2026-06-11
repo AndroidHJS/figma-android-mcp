@@ -32,6 +32,20 @@ export const STRETCH_RATIO = 0.85;
 /** Max drift (dp) from exact center for the center anchor to be chosen. */
 export const CENTER_SNAP_DP = 2;
 
+/**
+ * Max edge inset as a share of the parent's axis size for an edge anchor to
+ * be emitted. An element floating mid-space in a tall parent (e.g. 580dp from
+ * the bottom of a 1543dp screen) technically has a nearest edge, but the
+ * resulting anchor is semantically meaningless — the LLM reads "bottom:
+ * 580dp" as an intentional bottom attachment and produces nonsense on other
+ * screen heights. Above this ratio the annotation is skipped entirely: raw
+ * coordinates stay, and region hints remain the source of structure.
+ *
+ * 1/3 keeps the "centered but nudged" case (see CENTER_SNAP_DP comment),
+ * whose insets approach but stay under parent×1/3.
+ */
+export const ANCHOR_MAX_INSET_RATIO = 1 / 3;
+
 export interface SimplifiedAnchor {
   horizontal: "start" | "center" | "end" | "stretch";
   vertical: "top" | "center" | "bottom" | "stretch";
@@ -72,6 +86,18 @@ export function classifyAxis(pos: number, size: number, parentSize: number): Axi
   return Math.abs(gapNear) <= Math.abs(gapFar)
     ? { edge: "near", near: gapNear }
     : { edge: "far", far: gapFar };
+}
+
+/**
+ * Center and stretch classifications are always confident — they're chosen by
+ * strict criteria. Edge anchors are only confident when the element actually
+ * hugs that edge (inset within ANCHOR_MAX_INSET_RATIO of the parent size).
+ * Overhang (negative inset) counts by magnitude.
+ */
+function isAxisConfident(axis: AxisClass, parentSize: number): boolean {
+  if (axis.edge === "center" || axis.edge === "stretch") return true;
+  const inset = axis.edge === "near" ? axis.near! : axis.far!;
+  return Math.abs(inset) <= ANCHOR_MAX_INSET_RATIO * parentSize;
 }
 
 function buildAnchor(h: AxisClass, v: AxisClass): SimplifiedAnchor {
@@ -147,6 +173,11 @@ function annotateChildren(parent: SimplifiedNode, globalVars: GlobalVars): void 
 
     const h = classifyAxis(x, cw, pw);
     const v = classifyAxis(y, chH, ph);
+
+    // Low-confidence anchors are worse than none: a wrong-but-plausible
+    // "bottom: 580dp" misleads the LLM, while raw coordinates at least get
+    // grouped by region hints.
+    if (!isAxisConfident(h, pw) || !isAxisConfident(v, ph)) continue;
 
     const clone: SimplifiedLayout = { ...childLayout, anchor: buildAnchor(h, v) };
     const newKey = generateVarId("layout");

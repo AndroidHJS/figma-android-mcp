@@ -615,6 +615,102 @@ describe("extractTextStyle — line height", () => {
   });
 });
 
+describe("extractTextStyle — letter spacing", () => {
+  it("emits letter spacing in em, the unit both Android stacks consume directly", async () => {
+    const { nodes, globalVars } = await extract([
+      makeText({
+        characters: "tracked",
+        style: { fontFamily: "Inter", fontWeight: 400, fontSize: 14, letterSpacing: 0.28 },
+      }),
+    ]);
+    const style = globalVars.styles[nodes[0].textStyle!] as SimplifiedTextStyle;
+    expect(style.letterSpacing).toBe("0.02em");
+  });
+
+  it("keeps three decimals of precision and handles negative tracking", async () => {
+    // -0.5px on 14px is -0.0357…em — two-decimal rounding would distort it
+    // to -0.04 (a 12% error), which is why em values don't use pixelRound.
+    const { nodes, globalVars } = await extract([
+      makeText({
+        characters: "tight",
+        style: { fontFamily: "Inter", fontWeight: 400, fontSize: 14, letterSpacing: -0.5 },
+      }),
+    ]);
+    const style = globalVars.styles[nodes[0].textStyle!] as SimplifiedTextStyle;
+    expect(style.letterSpacing).toBe("-0.036em");
+  });
+
+  it("emits inline letter-spacing overrides in em", async () => {
+    const { nodes, globalVars } = await extract([
+      makeText({
+        characters: "ab",
+        style: { fontFamily: "Inter", fontWeight: 400, fontSize: 16 },
+        characterStyleOverrides: [0, 1],
+        styleOverrideTable: { "1": { letterSpacing: 0.32 } },
+      }),
+    ]);
+    expect(nodes[0].text).toBe("a{ts1}b{/ts1}");
+    const delta = globalVars.styles["ts1"] as SimplifiedTextStyle;
+    expect(delta.letterSpacing).toBe("0.02em");
+  });
+});
+
+describe("extractTextStyle — truncation", () => {
+  it("emits textTruncation and maxLines when ellipsis truncation is enabled", async () => {
+    const { nodes, globalVars } = await extract([
+      makeText({
+        characters: "long text",
+        style: {
+          fontFamily: "Inter",
+          fontWeight: 400,
+          fontSize: 14,
+          textTruncation: "ENDING",
+          maxLines: 2,
+        },
+      }),
+    ]);
+    const style = globalVars.styles[nodes[0].textStyle!] as SimplifiedTextStyle;
+    expect(style.textTruncation).toBe("ENDING");
+    expect(style.maxLines).toBe(2);
+  });
+
+  it("omits maxLines when truncation is disabled, even if Figma stores one", async () => {
+    // Figma keeps maxLines around after truncation is toggled off — without
+    // truncation it has no rendering effect and must not leak into output.
+    const { nodes, globalVars } = await extract([
+      makeText({
+        characters: "free text",
+        style: {
+          fontFamily: "Inter",
+          fontWeight: 400,
+          fontSize: 14,
+          textTruncation: "DISABLED",
+          maxLines: 3,
+        },
+      }),
+    ]);
+    const style = globalVars.styles[nodes[0].textStyle!] as SimplifiedTextStyle;
+    expect(style.textTruncation).toBeUndefined();
+    expect(style.maxLines).toBeUndefined();
+  });
+
+  it("treats the deprecated textAutoResize TRUNCATE as ENDING", async () => {
+    const { nodes, globalVars } = await extract([
+      makeText({
+        characters: "legacy",
+        style: {
+          fontFamily: "Inter",
+          fontWeight: 400,
+          fontSize: 14,
+          textAutoResize: "TRUNCATE",
+        },
+      }),
+    ]);
+    const style = globalVars.styles[nodes[0].textStyle!] as SimplifiedTextStyle;
+    expect(style.textTruncation).toBe("ENDING");
+  });
+});
+
 describe("extractTextStyle — broadened base style capture", () => {
   it("includes italic / textDecoration / hyperlink on a fully-styled text node", async () => {
     const { nodes, globalVars } = await extract([

@@ -192,7 +192,7 @@ export const getFigmaNodeTool = {
     "SECTION nodes (multiple FRAMEs as UI states, e.g. default/loading/error/empty/success): returns grouped multi-state frame data with state analysis. " +
     "AI should generate ONE page with state management (sealed class / enum) rather than separate pages.\n\n" +
     "FRAME / COMPONENT / other nodes: returns standard single-node design data identical to get_figma_data. " +
-    "Layout dimensions use dp units, font sizes use sp units. Colors are hex/rgba.\n\n" +
+    "Layout dimensions use dp units, font sizes use sp units, letter spacing uses em (use directly: Compose `N.em`, View `android:letterSpacing=\"N\"`). Colors are hex/rgba. textStyle entries with `textTruncation: ENDING` require ellipsis truncation (`maxLines` + `TextOverflow.Ellipsis` / `android:ellipsize=\"end\"`).\n\n" +
     "CRITICAL — the output includes an `imageAssets` section. Before writing ANY code, call `download_figma_images` with those nodeIds.\n\n" +
     "REQUIRED RULES — the response may include a `_REQUIRED_RULES` section listing mandatory skill resources. Read each before generating code.",
   parametersSchema,

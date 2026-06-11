@@ -2,7 +2,7 @@ import type { Hyperlink, Node as FigmaDocumentNode, TypeStyle, Paint } from "@fi
 import { isVisible, pixelRound, stableStringify } from "~/utils/common.js";
 import { hasValue } from "~/utils/identity.js";
 import { parsePaint, type SimplifiedFill } from "~/transformers/style.js";
-import { dpString, spString } from "~/utils/units.js";
+import { dpString, emString, spString } from "~/utils/units.js";
 
 export type SimplifiedTextStyle = Partial<{
   fontFamily: string;
@@ -19,6 +19,14 @@ export type SimplifiedTextStyle = Partial<{
   // where the base style has underline/strike and a per-character run clears
   // it. The base textStyle never emits NONE (defaults drop out).
   textDecoration: "STRIKETHROUGH" | "UNDERLINE" | "NONE";
+  // Only emitted when the designer enabled ellipsis truncation
+  // (textTruncation: "ENDING", or the deprecated textAutoResize: "TRUNCATE"
+  // that older files still carry). maxLines rides along only in that case —
+  // Figma stores it independently, but without truncation it has no
+  // rendering effect, and emitting it would tempt the LLM to clamp text
+  // the designer never clamped.
+  textTruncation: "ENDING";
+  maxLines: number;
   hyperlink: Hyperlink;
   // Only non-zero flags are emitted; defaults stay out of the ref so two nodes
   // that differ only in default flag values still dedupe.
@@ -49,6 +57,9 @@ export function hasTextStyle(
 export function extractTextStyle(n: FigmaDocumentNode) {
   if (hasTextStyle(n)) {
     const style = n.style;
+    const truncates =
+      ("textTruncation" in style && style.textTruncation === "ENDING") ||
+      ("textAutoResize" in style && style.textAutoResize === "TRUNCATE");
     const textStyle: SimplifiedTextStyle = {
       fontFamily: style.fontFamily,
       fontStyle: "fontStyle" in style && style.fontStyle ? style.fontStyle : undefined,
@@ -57,7 +68,7 @@ export function extractTextStyle(n: FigmaDocumentNode) {
       lineHeight: formatLineHeight(style as LineHeightSource, style.fontSize),
       letterSpacing:
         style.letterSpacing && style.letterSpacing !== 0 && style.fontSize
-          ? `${pixelRound((style.letterSpacing / style.fontSize) * 100)}%`
+          ? emString(style.letterSpacing, style.fontSize)
           : undefined,
       textCase: style.textCase,
       textAlignHorizontal: style.textAlignHorizontal,
@@ -81,6 +92,11 @@ export function extractTextStyle(n: FigmaDocumentNode) {
       listSpacing:
         "listSpacing" in style && style.listSpacing && style.listSpacing > 0
           ? dpString(style.listSpacing)
+          : undefined,
+      textTruncation: truncates ? "ENDING" : undefined,
+      maxLines:
+        truncates && "maxLines" in style && typeof style.maxLines === "number" && style.maxLines > 0
+          ? style.maxLines
           : undefined,
     };
     return textStyle;
@@ -608,7 +624,7 @@ function classifyRun(
       case "letterSpacing": {
         const ls = value as number;
         if (ls && effectiveFontSize) {
-          refDelta.letterSpacing = `${pixelRound((ls / effectiveFontSize) * 100)}%`;
+          refDelta.letterSpacing = emString(ls, effectiveFontSize);
           hasRefProps = true;
         }
         break;

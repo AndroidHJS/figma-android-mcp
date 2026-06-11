@@ -141,6 +141,32 @@ Figma 输出的 CSS 字符串含 \`radial-gradient(circle at 50% 50%, ...)\`—�
 - ❌ 看到 \`circle\` → \`Canvas { drawCircle(...) }\`
 - ✅ 忽略 CSS 字符串里的 shape 关键词；按节点的 width/height/cornerRadius 建 Box，用 \`Brush.radialGradient(...)\` 做 background
 
+## 文本还原规则（强制）
+
+textStyle 数据按以下规则直译，禁止自行换算、省略或"看起来差不多"：
+
+### 固定行高（textStyle 带 \`lineHeight: Nsp\`）
+
+Android 默认的字体内边距让文本实际占高 ≠ Figma 的行高盒，多行文本逐行累积偏差：
+
+- Compose → \`lineHeight = N.sp\` 必须同时配 \`platformStyle = PlatformTextStyle(includeFontPadding = false)\` 与 \`lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None)\`
+- View → \`android:lineHeight="Nsp"\`（API 28+）+ \`android:includeFontPadding="false"\`
+- lineHeight 为 \`150%\` 形式时 → fontSize × 1.5 得到 sp 值后按上面处理
+- textStyle **没有** lineHeight（设计用 auto 行高）→ 不要设置行高，跟随字体默认
+
+### letterSpacing（数据已是 em，直接照抄）
+
+- Compose → \`letterSpacing = N.em\`（不是 \`.sp\`）
+- View → \`android:letterSpacing="N"\`（该属性本身就是 em 倍数，照抄数值、不带单位）
+- ❌ 禁止把 em 数值当 sp/dp 使用，禁止再做任何单位换算
+
+### 文本截断（textStyle 带 \`textTruncation: ENDING\`）
+
+- Compose → \`maxLines = N\` + \`overflow = TextOverflow.Ellipsis\`
+- View → \`android:maxLines="N"\` + \`android:ellipsize="end"\`
+- 数据无 \`maxLines\` 字段时按节点高度 ÷ 行高估算行数，单行高度的节点用 1
+- 反向同样成立：textStyle **没有** textTruncation 的文本，禁止擅自加 maxLines / ellipsize
+
 ## 写完后自检（强制，单端各跑一次）
 
 - Compose：搜 \\\`Modifier\\.(width|size)\\(\\s*\\d+(?:\\.\\d+)?\\.dp\\\`，逐处核对是否落在白名单
@@ -150,7 +176,9 @@ Figma 输出的 CSS 字符串含 \`radial-gradient(circle at 50% 50%, ...)\`—�
   - 搜 \`endX\\s*=\\s*[01]?\\.\\d+f\` → 除 0f 和 1f 外需有 gradientTransform 数据支撑
   - ${COMPOSE_OFFSET_SELF_CHECK_ZH}
   - 搜 \`drawCircle\` → 全部核实：节点是否是 GRADIENT_RADIAL fill？是 → 改为 Box + Modifier.background(Brush.radialGradient(...))。仅当节点本身就是圆形矢量路径时才保留 drawCircle。
+  - 搜 \`lineHeight\\s*=\` → 每处核对是否同时设置了 \`PlatformTextStyle(includeFontPadding = false)\` 与 \`LineHeightStyle\`
 - View：grep \\\`layout_width="\\d+dp"\\\`，逐处核对是否落在白名单
+- View 额外检查：grep \`android:lineHeight\` → 每处核对是否同时设置了 \`android:includeFontPadding="false"\`
 
 不落白名单的，必须按上面表格重写。
 `,
@@ -284,6 +312,8 @@ const otherAssets = imageAssets.filter(a => a.category === "auto-detected");
 
 **多帧处理（SECTION 节点）**：若响应中包含多张效果图，每张前有标签 \`--- 帧 <frameId> 效果图 ---\`，各图对应一个 Frame 状态。按以下顺序处理：先完整读取所有效果图建立页面/状态的整体认知，再为每个 Frame 状态分别做下方的视觉分析，最后生成对应状态的代码。
 
+**文件拆分（强制）**：若响应头部包含 \`文件拆分计划\`，必须按清单生成多个独立文件——每个页面组一个 Screen 文件、每个对话框一个 Dialog 文件（同一弹窗的多个状态共用一个文件）。每帧 \`metadata.suggestedFile\` 标明该帧数据归属哪个文件。**禁止**把所有页面和弹窗写进同一个文件；弹窗 UI 本体不写进页面文件，页面只持有显示/隐藏逻辑。建议文件名保留了设计稿原始中文名，落地时按项目惯例翻译为英文并放入合适目录。无 \`文件拆分计划\`（单页面多状态）时保持单文件 + sealed class，不要擅自拆分。
+
 在写任何代码之前，**必须先把效果图按视觉边界划分成独立区域**。不要跳过这一步——这是决定容器嵌套结构的依据。
 
 ##### 分区域规则
@@ -411,7 +441,7 @@ const otherAssets = imageAssets.filter(a => a.category === "auto-detected");
 
 ## 备忘
 
-- 单位规则：\`get_figma_data\` 输出的尺寸已是 dp，字号是 sp，颜色是 hex/rgba
+- 单位规则：\`get_figma_data\` 输出的尺寸已是 dp，字号是 sp，letterSpacing 是 em（直接照抄），颜色是 hex/rgba
 - \`nodeId\` 形如 \`I5666:180910;1:10515;1:10336\` 是嵌套实例链，整体当一个 ID 传，**不要**自己拆分号
 - \`MCP 工具名\` 在 Claude Code 里可能带命名空间前缀（\`mcp__<别名>__get_figma_data\`），调用时按当前环境实际名字调即可，不要硬编码
 `,

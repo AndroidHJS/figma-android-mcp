@@ -38,7 +38,7 @@ export type GetFigmaSectionResult = {
 type DialogRole = "page" | "dialog";
 type DialogConfidence = "high" | "medium";
 
-type FrameGroup = {
+export type FrameGroup = {
   pageName: string;
   frames: SimplifiedDesign[];
   stateLabels: string[];
@@ -522,6 +522,141 @@ function detectDialogRoles(
 }
 
 // ---------------------------------------------------------------------------
+// File splitting plan
+// ---------------------------------------------------------------------------
+
+export type PlannedFile = {
+  /** Suggested file name only — no directory. The server doesn't know the
+   * project's package structure, and LLMs follow concrete paths literally,
+   * so emitting a `ui/...` prefix would get copied into the wrong place. */
+  fileName: string;
+  kind: "screen" | "dialog";
+  /** Owning page group. */
+  pageName: string;
+  /** State labels of the frames this file covers. */
+  stateLabels: string[];
+};
+
+export type FileSplitPlan = {
+  files: PlannedFile[];
+  /** Frame → planned file name, keyed by frame object identity. */
+  assignments: Map<SimplifiedDesign, string>;
+};
+
+/**
+ * Strip path separators and whitespace so a pageName like "订单 / 详情"
+ * (produced by mergeByNameMissStructureMatch joining with " / ") can't break
+ * the suggested file name. Windows-reserved characters are removed for the
+ * same reason.
+ */
+function sanitizeFileBaseName(name: string): string {
+  return name.replace(/[\\/:*?"<>|\s]+/g, "");
+}
+
+/**
+ * Derive the dialog's own name from a frame identity by stripping the owning
+ * page's name prefix, then dropping a trailing state segment.
+ *
+ *   "订单详情-挽留弹窗"      (page "订单详情") → "挽留弹窗"
+ *   "订单详情-挽留弹窗-默认" (page "订单详情") → "挽留弹窗"
+ *
+ * Group stateLabels can't be used here: a multi-state dialog arrives via
+ * mergeDialogOrphans, whose labels were parsed in the orphan group's context
+ * and only carry the state ("默认") — naming the file off them would produce
+ * "默认Dialog.kt".
+ */
+function dialogBaseName(frame: SimplifiedDesign, groupPageName: string): string {
+  let identity = getFrameIdentity(frame);
+  if (identity.startsWith(groupPageName)) {
+    identity = identity.slice(groupPageName.length).replace(/^[\s\-—·_/]+/, "");
+  }
+  if (identity.length === 0) return "";
+  return parsePageIdentity(identity).pageName;
+}
+
+/**
+ * Build the file splitting plan for a section's frame groups.
+ *
+ * Mapping: each group's page-role frames → one Screen file; dialog-role
+ * frames → one Dialog file per distinct dialog name (a dialog's multiple
+ * states share one file). No Components file is planned — how a page
+ * organizes its internal skeleton is the same decision whether or not other
+ * pages exist, and the skeleton-extraction guidance already covers it.
+ *
+ * Returns undefined for the no-split case (single group, no dialogs):
+ * same-page states stay a single sealed-class file, and emitting a
+ * one-entry plan would just add noise for the LLM to overweight.
+ */
+export function buildFileSplitPlan(groups: FrameGroup[]): FileSplitPlan | undefined {
+  const hasDialog = groups.some((g) => g.dialogRoles.includes("dialog"));
+  if (groups.length <= 1 && !hasDialog) return undefined;
+
+  const files: PlannedFile[] = [];
+  const assignments = new Map<SimplifiedDesign, string>();
+  const usedNames = new Set<string>();
+
+  // Two groups can sanitize to the same base ("订单/详情" vs "订单详情") —
+  // suffix a counter rather than silently pointing two pages at one file.
+  const uniqueFileName = (base: string, suffix: string): string => {
+    let candidate = `${base}${suffix}`;
+    let n = 2;
+    while (usedNames.has(candidate)) {
+      candidate = `${base}${n}${suffix}`;
+      n++;
+    }
+    usedNames.add(candidate);
+    return candidate;
+  };
+
+  for (let gi = 0; gi < groups.length; gi++) {
+    const group = groups[gi];
+    const base = sanitizeFileBaseName(group.pageName) || `Page${gi + 1}`;
+
+    const pageIndices = group.frames
+      .map((_, i) => i)
+      .filter((i) => group.dialogRoles[i] !== "dialog");
+
+    if (pageIndices.length > 0) {
+      const screenFile: PlannedFile = {
+        fileName: uniqueFileName(base, "Screen.kt"),
+        kind: "screen",
+        pageName: group.pageName,
+        stateLabels: pageIndices.map((i) => group.stateLabels[i]),
+      };
+      files.push(screenFile);
+      for (const i of pageIndices) {
+        assignments.set(group.frames[i], screenFile.fileName);
+      }
+    }
+
+    // Dialog frames, aggregated by dialog name so a dialog's states share
+    // one file. Scoped per group — same-named dialogs under different pages
+    // are different dialogs.
+    const dialogFilesByBase = new Map<string, PlannedFile>();
+    for (let i = 0; i < group.frames.length; i++) {
+      if (group.dialogRoles[i] !== "dialog") continue;
+      const dialogBase =
+        sanitizeFileBaseName(dialogBaseName(group.frames[i], group.pageName)) || base;
+      let file = dialogFilesByBase.get(dialogBase);
+      if (!file) {
+        file = {
+          fileName: uniqueFileName(dialogBase, "Dialog.kt"),
+          kind: "dialog",
+          pageName: group.pageName,
+          stateLabels: [],
+        };
+        dialogFilesByBase.set(dialogBase, file);
+        files.push(file);
+      }
+      file.stateLabels.push(group.stateLabels[i]);
+      assignments.set(group.frames[i], file.fileName);
+    }
+  }
+
+  return { files, assignments };
+}
+
+// ---------------------------------------------------------------------------
 // Header block
 // ---------------------------------------------------------------------------
 
@@ -537,6 +672,7 @@ function buildHeaderBlock(
   sectionName: string,
   groups: FrameGroup[],
   imageAssets: ImageAsset[],
+  filePlan: FileSplitPlan | undefined,
 ): string {
   const totalFrames = groups.reduce((sum, g) => sum + g.frames.length, 0);
   const isMultiPage = groups.length > 1;
@@ -662,7 +798,9 @@ function buildHeaderBlock(
     );
   } else {
     lines.push(
-      "# - 这些 Frame 是同一页面的不同 UI 状态，生成一个页面即可",
+      hasDialog
+        ? "# - page 帧是同一页面的不同 UI 状态，生成一个页面；对话框帧拆为独立文件"
+        : "# - 这些 Frame 是同一页面的不同 UI 状态，生成一个页面即可",
       "# - 共享的布局元素提取为基础骨架，各状态差异用条件渲染",
       "# - 状态变量用 sealed class / enum 定义",
     );
@@ -670,9 +808,25 @@ function buildHeaderBlock(
 
   if (hasDialog) {
     lines.push(
-      "# - 🎭 标注为对话框的 Frame → 用 DialogFragment / ModalBottomSheet 实现",
-      "#   而非完整页面（Activity/Fragment），但仍属于所属页面组的状态管理",
+      "# - 🎭 标注为对话框的 Frame → 拆为独立文件，用 DialogFragment / ModalBottomSheet 实现",
+      "#   弹窗 UI 本体不写进页面文件；所属页面持有显示/隐藏逻辑并触发弹出",
     );
+  }
+
+  if (filePlan) {
+    lines.push(
+      "#",
+      "# 文件拆分计划 —— 必须按下列清单分别生成独立文件（目录与英文命名按项目惯例调整）：",
+    );
+    for (let i = 0; i < filePlan.files.length; i++) {
+      const f = filePlan.files[i];
+      const desc =
+        f.kind === "screen"
+          ? `页面${f.stateLabels.length > 1 ? `（${f.stateLabels.length} 个状态，sealed class 管理）` : ""}`
+          : `对话框${f.stateLabels.length > 1 ? `（${f.stateLabels.length} 个状态）` : ""}`;
+      lines.push(`#   ${i + 1}. ${f.fileName} — ${desc}`);
+    }
+    lines.push("#   每帧 metadata.suggestedFile 标明该帧数据归属哪个文件");
   }
 
   lines.push(
@@ -862,6 +1016,11 @@ export async function getFigmaSectionFromRaw(
   //     parent (e.g. "提单-取消双授信" → merge into "提单").
   const mergedGroups = mergeDialogOrphans(groups);
 
+  // 5c. File splitting plan — undefined for the no-split case (single page
+  //     group, no dialogs), which keeps simple sections byte-identical to the
+  //     pre-split output.
+  const filePlan = buildFileSplitPlan(mergedGroups);
+
   // 6. Build output
   const dedupedAssets = Array.from(allImageAssets.values());
 
@@ -877,7 +1036,7 @@ export async function getFigmaSectionFromRaw(
   const sep = isYaml ? "\n---\n" : "\n";
 
   // Header: grouped frame overview + AI guidance + deduplicated imageAssets
-  let output = buildHeaderBlock(sectionName, mergedGroups, dedupedAssets);
+  let output = buildHeaderBlock(sectionName, mergedGroups, dedupedAssets, filePlan);
 
   // Per-frame blocks — iterate through groups so we can label each block
   // with its group context.
@@ -922,6 +1081,8 @@ export async function getFigmaSectionFromRaw(
           : "";
       }
 
+      const suggestedFile = filePlan?.assignments.get(frame);
+
       const result: Record<string, unknown> = {
         metadata: {
           name: frame.name,
@@ -933,6 +1094,7 @@ export async function getFigmaSectionFromRaw(
           ...(group.dialogRoles[i] === "dialog"
             ? { dialogConfidence: group.dialogConfidences[i] }
             : {}),
+          ...(suggestedFile ? { suggestedFile } : {}),
         },
         nodes,
         globalVars,
@@ -944,6 +1106,14 @@ export async function getFigmaSectionFromRaw(
       let serialized = serializeResult(result, outputFormat);
 
       if (isYaml) {
+        // Per-frame file attribution as a comment line, mirroring
+        // metadata.suggestedFile. Attribution lines instead of FILE N/M
+        // bracket markers: frames map many-to-one onto files and dialog
+        // frames interleave with page frames inside a group, so bracket
+        // pairs would either repeat or force reordering the output.
+        if (suggestedFile) {
+          blockHeader = `${blockHeader}\n# 归属文件: ${suggestedFile}`;
+        }
         const frameAssets =
           frame.imageAssets.length > 0
             ? frame.imageAssets
