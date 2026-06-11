@@ -4,8 +4,8 @@ import type {
   HasFramePropertiesTrait,
   HasLayoutTrait,
 } from "@figma/rest-api-spec";
-import { generateShorthand, generateVarId } from "~/utils/common.js";
-import { dpString } from "~/utils/units.js";
+import { generateShorthand, generateVarId, pixelRound } from "~/utils/common.js";
+import { dpString, getDesignDensityDivisor } from "~/utils/units.js";
 import type { SimplifiedAnchor } from "~/transformers/anchor-inference.js";
 
 export interface SimplifiedLayout {
@@ -231,13 +231,14 @@ function buildSimplifiedFrameValues(n: FigmaDocumentNode): SimplifiedLayout | { 
   // Only include wrap if it's set to WRAP, since flex layouts don't default to wrapping
   frameValues.wrap = n.layoutWrap === "WRAP" ? true : undefined;
   frameValues.gap = buildGap(n, frameValues.mode);
-  // gather padding
+  // gather padding (density-scaled — raw Figma px must be divided by density divisor)
   if (n.paddingTop || n.paddingBottom || n.paddingLeft || n.paddingRight) {
+    const divisor = getDesignDensityDivisor();
     frameValues.padding = generateShorthand({
-      top: n.paddingTop ?? 0,
-      right: n.paddingRight ?? 0,
-      bottom: n.paddingBottom ?? 0,
-      left: n.paddingLeft ?? 0,
+      top: pixelRound((n.paddingTop ?? 0) / divisor),
+      right: pixelRound((n.paddingRight ?? 0) / divisor),
+      bottom: pixelRound((n.paddingBottom ?? 0) / divisor),
+      left: pixelRound((n.paddingLeft ?? 0) / divisor),
     });
   }
 

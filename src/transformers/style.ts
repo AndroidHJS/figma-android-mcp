@@ -5,8 +5,9 @@ import type {
   RGBA,
   Transform,
 } from "@figma/rest-api-spec";
-import { generateShorthand, isVisible } from "~/utils/common.js";
+import { generateShorthand, isVisible, pixelRound } from "~/utils/common.js";
 import { tagError } from "~/utils/error-meta.js";
+import { dpString, getDesignDensityDivisor } from "~/utils/units.js";
 import { hasValue, isStrokeWeights } from "~/utils/identity.js";
 
 export type CSSRGBAColor = `rgba(${number}, ${number}, ${number}, ${number})`;
@@ -250,7 +251,7 @@ export function buildSimplifiedStrokes(
   }
 
   if (hasValue("strokeWeight", n) && typeof n.strokeWeight === "number" && n.strokeWeight > 0) {
-    strokes.strokeWeight = `${n.strokeWeight}dp`;
+    strokes.strokeWeight = dpString(n.strokeWeight);
   }
 
   if (hasValue("strokeDashes", n) && Array.isArray(n.strokeDashes) && n.strokeDashes.length) {
@@ -258,7 +259,13 @@ export function buildSimplifiedStrokes(
   }
 
   if (hasValue("individualStrokeWeights", n, isStrokeWeights)) {
-    strokes.strokeWeight = generateShorthand(n.individualStrokeWeights);
+    const divisor = getDesignDensityDivisor();
+    strokes.strokeWeight = generateShorthand({
+      top: pixelRound((n.individualStrokeWeights.top ?? 0) / divisor),
+      right: pixelRound((n.individualStrokeWeights.right ?? 0) / divisor),
+      bottom: pixelRound((n.individualStrokeWeights.bottom ?? 0) / divisor),
+      left: pixelRound((n.individualStrokeWeights.left ?? 0) / divisor),
+    });
   }
 
   return strokes;
