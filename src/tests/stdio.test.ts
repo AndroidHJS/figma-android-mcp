@@ -25,7 +25,7 @@ describe("stdio transport", () => {
     const { tools } = await client.listTools();
     const toolNames = tools.map((t) => t.name);
 
-    expect(toolNames).toContain("get_figma_data");
+    expect(toolNames).toContain("get_figma_node");
     expect(toolNames).toContain("download_figma_images");
   }, 30_000);
 
@@ -42,7 +42,7 @@ describe("stdio transport", () => {
     const { tools } = await client.listTools();
     const toolNames = tools.map((t) => t.name);
 
-    expect(toolNames).toContain("get_figma_data");
+    expect(toolNames).toContain("get_figma_node");
     expect(toolNames).toContain("download_figma_images");
   }, 30_000);
 });

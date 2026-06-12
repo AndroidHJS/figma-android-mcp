@@ -25,7 +25,7 @@ export type ToolCallContext = {
 };
 
 export type ValidationRejectInput = {
-  tool: "get_figma_data" | "download_figma_images";
+  tool: "get_figma_node" | "get_figma_data" | "download_figma_images";
   durationMs?: number;
   field: string;
   rule: string;
@@ -55,7 +55,7 @@ export type CommonCallProps = {
 };
 
 export type GetFigmaDataCall = CommonCallProps & {
-  tool: "get_figma_data";
+  tool: "get_figma_data" | "get_figma_node";
   output_format: "yaml" | "json";
   raw_size_kb?: number;
   simplified_size_kb?: number;

@@ -77,7 +77,7 @@ describe("per-request telemetry redaction", () => {
     const result = await client.request(
       {
         method: "tools/call",
-        params: { name: "get_figma_data", arguments: { fileKey: "abc123" } },
+        params: { name: "get_figma_node", arguments: { fileKey: "abc123", nodeId: "1234:5678" } },
       },
       CallToolResultSchema,
     );

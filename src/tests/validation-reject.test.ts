@@ -44,7 +44,7 @@ describe("validation reject capture (monkey patch)", () => {
     await server.close();
   });
 
-  it("captures structured field/rule when get_figma_data fileKey fails regex", async () => {
+  it("captures structured field/rule when get_figma_node fileKey fails regex", async () => {
     // McpServer catches the validation McpError and turns it into a tool
     // result with isError=true (rather than rejecting the JSON-RPC request).
     // Our monkey patch fires before that conversion.
@@ -52,8 +52,8 @@ describe("validation reject capture (monkey patch)", () => {
       {
         method: "tools/call",
         params: {
-          name: "get_figma_data",
-          arguments: { fileKey: "invalid-key!" },
+          name: "get_figma_node",
+          arguments: { fileKey: "invalid-key!", nodeId: "1234:5678" },
         },
       },
       CallToolResultSchema,
@@ -63,7 +63,7 @@ describe("validation reject capture (monkey patch)", () => {
     const captureSpy = vi.mocked(telemetry.captureValidationReject);
     expect(captureSpy).toHaveBeenCalledOnce();
     const [input] = captureSpy.mock.calls[0];
-    expect(input.tool).toBe("get_figma_data");
+    expect(input.tool).toBe("get_figma_node");
     expect(input.field).toBe("fileKey");
     // Zod regex failures emit invalid_string in v3 and invalid_format in v4 —
     // accept either so the test doesn't break across SDK upgrades.
@@ -107,8 +107,8 @@ describe("validation reject capture (monkey patch)", () => {
         {
           method: "tools/call",
           params: {
-            name: "get_figma_data",
-            arguments: { fileKey: "abc123" },
+            name: "get_figma_node",
+            arguments: { fileKey: "abc123", nodeId: "1234:5678" },
           },
         },
         CallToolResultSchema,

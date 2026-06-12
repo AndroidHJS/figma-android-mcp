@@ -138,13 +138,13 @@ export function captureValidationReject(
     validation_rule: input.rule,
   };
 
-  if (input.tool === "get_figma_data") {
+  if (input.tool === "get_figma_node" || input.tool === "get_figma_data") {
     captureToolCall({
       ...common,
-      tool: "get_figma_data",
+      tool: input.tool,
       output_format: input.outputFormat ?? "yaml",
       depth: null,
-      has_node_id: false,
+      has_node_id: input.tool === "get_figma_node",
     });
   } else {
     captureToolCall({

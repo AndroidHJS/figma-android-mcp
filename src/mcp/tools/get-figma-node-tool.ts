@@ -50,6 +50,14 @@ const parameters = {
     .describe(
       'Output platform style: "compose" for Jetpack Compose layout fields, "views" for traditional Android Views layout fields. Falls back to the server-level --output-platform setting when omitted.',
     ),
+  manifestOnly: z
+    .boolean()
+    .optional()
+    .describe(
+      "Only applies when the node is a SECTION. When true, skip frame extraction and return a manifest immediately. " +
+      "Use when you plan to call get_figma_node per-frame anyway — each frame then gets its own 300 KB budget with no cross-frame compression, giving higher fidelity. " +
+      "Sections with more than 5 frames trigger this automatically.",
+    ),
 };
 
 const parametersSchema = z.object(parameters);
@@ -66,11 +74,14 @@ async function getFigmaNode(
   extra: ToolExtra,
   skills?: Skill[],
 ) {
+  const startTime = Date.now();
+  // Set after parsing so the catch block knows whether it has valid params for telemetry.
+  let telemetryInput: { fileKey: string; nodeId: string } | undefined;
   try {
-    const { fileKey, nodeId: rawNodeId, depth, includePreview, outputPlatform } =
+    const { fileKey, nodeId: rawNodeId, depth, includePreview, outputPlatform, manifestOnly } =
       parametersSchema.parse(params);
-
     const nodeId = rawNodeId.replace(/-/g, ":");
+    telemetryInput = { fileKey, nodeId };
     const effectivePlatform = outputPlatform ?? serverOutputPlatform;
 
     Logger.log(`Fetching node ${nodeId} from file ${fileKey} (auto-routing)`);
@@ -102,7 +113,7 @@ async function getFigmaNode(
       // Route to section pipeline
       const result = await getFigmaSectionFromRaw(
         rawResult.data,
-        { fileKey, sectionNodeId: nodeId, depth },
+        { fileKey, sectionNodeId: nodeId, depth, manifestOnly },
         outputFormat,
         effectivePlatform,
         skills,
@@ -178,6 +189,14 @@ async function getFigmaNode(
   } catch (error) {
     const message = error instanceof Error ? error.message : JSON.stringify(error);
     Logger.error(`Error fetching node ${params.fileKey}/${params.nodeId}:`, message);
+    // Fire telemetry for pre-routing errors (e.g. API failure before type detection).
+    // The FRAME routing path fires its own telemetry via onComplete; this covers the rest.
+    if (telemetryInput) {
+      captureGetFigmaDataCall(
+        { input: telemetryInput, outputFormat, durationMs: Date.now() - startTime, error },
+        { transport, authMode, clientInfo },
+      );
+    }
     return {
       isError: true,
       content: [{ type: "text" as const, text: `Error fetching node: ${message}` }],
@@ -190,10 +209,17 @@ export const getFigmaNodeTool = {
   description:
     "Unified entry point for any Figma node URL — auto-detects node type and routes accordingly.\n\n" +
     "SECTION nodes (multiple FRAMEs as UI states, e.g. default/loading/error/empty/success): returns grouped multi-state frame data with state analysis. " +
-    "AI should generate ONE page with state management (sealed class / enum) rather than separate pages.\n\n" +
-    "FRAME / COMPONENT / other nodes: returns standard single-node design data identical to get_figma_data. " +
+    "Same-page state frames → ONE screen file with state management (sealed class / enum), NOT separate pages.\n\n" +
+    "FILE SPLITTING — For multi-page sections or sections containing dialogs, the header includes a 文件拆分计划 (file splitting plan). " +
+    "You MUST create each listed file separately: one Screen file per page group, one Dialog file per dialog (a dialog's multiple states share one file). " +
+    "Each frame's `metadata.suggestedFile` names the file its data belongs to. " +
+    "Dialog UI goes in its own file (DialogFragment / ModalBottomSheet); the owning page only holds show/hide logic. " +
+    "Suggested names keep the designer's original (Chinese) naming — adapt directory and English naming to the project's conventions.\n\n" +
+    "MANIFEST MODE — Sections with more than 5 frames return a lightweight manifest instead of full data. " +
+    "Follow the manifest instructions to call get_figma_node per frame; each frame then gets its own 300 KB budget with no cross-frame compression.\n\n" +
+    "FRAME / COMPONENT / other nodes: returns standard single-node design data. " +
     "Layout dimensions use dp units, font sizes use sp units, letter spacing uses em (use directly: Compose `N.em`, View `android:letterSpacing=\"N\"`). Colors are hex/rgba. textStyle entries with `textTruncation: ENDING` require ellipsis truncation (`maxLines` + `TextOverflow.Ellipsis` / `android:ellipsize=\"end\"`).\n\n" +
-    "CRITICAL — the output includes an `imageAssets` section. Before writing ANY code, call `download_figma_images` with those nodeIds.\n\n" +
+    "CRITICAL — the output includes an `imageAssets` section (deduplicated at section level). Before writing ANY code, call `download_figma_images` with those nodeIds.\n\n" +
     "REQUIRED RULES — the response may include a `_REQUIRED_RULES` section listing mandatory skill resources. Read each before generating code.",
   parametersSchema,
   handler: getFigmaNode,

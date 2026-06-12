@@ -36,7 +36,7 @@ describe("StreamableHTTP transport", () => {
     const { tools } = await client.listTools();
     const toolNames = tools.map((t) => t.name);
 
-    expect(toolNames).toContain("get_figma_data");
+    expect(toolNames).toContain("get_figma_node");
     expect(toolNames).toContain("download_figma_images");
 
     await client.close();
@@ -51,7 +51,7 @@ describe("StreamableHTTP transport", () => {
     const { tools } = await client.listTools();
     const toolNames = tools.map((t) => t.name);
 
-    expect(toolNames).toContain("get_figma_data");
+    expect(toolNames).toContain("get_figma_node");
     expect(toolNames).toContain("download_figma_images");
 
     await client.close();
@@ -143,8 +143,8 @@ describe("Multi-client test", () => {
 
     const [toolsA, toolsB] = await Promise.all([clientA.listTools(), clientB.listTools()]);
 
-    expect(toolsA.tools.map((t) => t.name)).toContain("get_figma_data");
-    expect(toolsB.tools.map((t) => t.name)).toContain("get_figma_data");
+    expect(toolsA.tools.map((t) => t.name)).toContain("get_figma_node");
+    expect(toolsB.tools.map((t) => t.name)).toContain("get_figma_node");
 
     await Promise.all([clientA.close(), clientB.close()]);
   }, 15_000);

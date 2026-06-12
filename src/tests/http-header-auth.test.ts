@@ -7,29 +7,25 @@ import type { AddressInfo } from "net";
 import { startHttpServer, stopHttpServer } from "~/server.js";
 import type { FigmaAuthOptions } from "~/services/figma.js";
 
-const figmaFileResponse = {
+const figmaNodesResponse = {
   name: "Auth Test File",
   lastModified: "2026-01-01T00:00:00Z",
   thumbnailUrl: "",
   version: "1",
-  document: {
-    id: "0:0",
-    name: "Document",
-    type: "DOCUMENT",
-    children: [
-      {
-        id: "1:1",
-        name: "Page",
-        type: "CANVAS",
-        visible: true,
+  nodes: {
+    "1:2": {
+      document: {
+        id: "1:2",
+        name: "Frame 1",
+        type: "FRAME",
         children: [],
       },
-    ],
+      components: {},
+      componentSets: {},
+      schemaVersion: 0,
+      styles: {},
+    },
   },
-  components: {},
-  componentSets: {},
-  schemaVersion: 0,
-  styles: {},
 };
 
 const emptyAuth = {
@@ -47,7 +43,7 @@ describe("HTTP header Figma API key authentication", () => {
     const realFetch = globalThis.fetch;
     fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (String(input).startsWith("https://api.figma.com")) {
-        return Response.json(figmaFileResponse);
+        return Response.json(figmaNodesResponse);
       }
       return realFetch(input, init);
     });
@@ -90,15 +86,15 @@ describe("HTTP header Figma API key authentication", () => {
     ).length;
   }
 
-  it("uses X-Figma-Token from the HTTP request for get_figma_data", async () => {
+  it("uses X-Figma-Token from the HTTP request for get_figma_node", async () => {
     await connectClient({ "X-Figma-Token": "request-key" });
 
     const result = await client.request(
       {
         method: "tools/call",
         params: {
-          name: "get_figma_data",
-          arguments: { fileKey: "abc123" },
+          name: "get_figma_node",
+          arguments: { fileKey: "abc123", nodeId: "1:2" },
         },
       },
       CallToolResultSchema,
@@ -118,8 +114,8 @@ describe("HTTP header Figma API key authentication", () => {
       {
         method: "tools/call",
         params: {
-          name: "get_figma_data",
-          arguments: { fileKey: "abc123" },
+          name: "get_figma_node",
+          arguments: { fileKey: "abc123", nodeId: "1:2" },
         },
       },
       CallToolResultSchema,
@@ -136,8 +132,8 @@ describe("HTTP header Figma API key authentication", () => {
       {
         method: "tools/call",
         params: {
-          name: "get_figma_data",
-          arguments: { fileKey: "abc123" },
+          name: "get_figma_node",
+          arguments: { fileKey: "abc123", nodeId: "1:2" },
         },
       },
       CallToolResultSchema,
