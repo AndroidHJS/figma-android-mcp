@@ -35,6 +35,12 @@ const parameters = {
     .describe(
       'Output platform style: "compose" for Jetpack Compose layout fields, "views" for traditional Android Views layout fields. Falls back to the server-level --output-platform setting when omitted.',
     ),
+  manifestOnly: z
+    .boolean()
+    .optional()
+    .describe(
+      "When true, skip frame extraction and return a manifest immediately. Use for sections with many frames when you plan to call get_figma_data per-frame anyway — each frame then gets its own 300 KB budget with no cross-frame compression, giving higher fidelity. Sections with more than 5 frames trigger this automatically.",
+    ),
 };
 
 const parametersSchema = z.object(parameters);
@@ -49,21 +55,21 @@ async function getFigmaSection(
   skills?: Skill[],
 ) {
   try {
-    const { fileKey, sectionNodeId: rawNodeId, depth, outputPlatform } =
+    const { fileKey, sectionNodeId: rawNodeId, depth, outputPlatform, manifestOnly } =
       parametersSchema.parse(params);
 
     // Replace - with : in nodeId — Figma API expects :.
     const sectionNodeId = rawNodeId.replace(/-/g, ":");
 
     Logger.log(
-      `Fetching SECTION ${sectionNodeId} from file ${fileKey}${depth ? ` (depth: ${depth})` : ""}`,
+      `Fetching SECTION ${sectionNodeId} from file ${fileKey}${depth ? ` (depth: ${depth})` : ""}${manifestOnly ? " (manifest-only)" : ""}`,
     );
 
     const effectivePlatform = outputPlatform ?? serverOutputPlatform;
 
     const result = await runGetFigmaSection(
       figmaService,
-      { fileKey, sectionNodeId, depth },
+      { fileKey, sectionNodeId, depth, manifestOnly },
       outputFormat,
       effectivePlatform,
       skills,

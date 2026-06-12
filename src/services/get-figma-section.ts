@@ -20,17 +20,13 @@ import { detectAndProcessOverlays } from "~/transformers/overlay-detection.js";
 import { processInstanceOverrides } from "~/transformers/instance-overrides.js";
 import { generateRegionHints } from "~/transformers/region-hints.js";
 import { generateLayoutHints, OUTPUT_SIZE_LIMIT_KB } from "~/services/get-figma-data.js";
-import {
-  compactDesign,
-  collapseRepeats,
-  truncateLongTexts,
-  deepClone,
-} from "~/services/compact-design.js";
 
 export type GetFigmaSectionInput = {
   fileKey: string;
   sectionNodeId: string;
   depth?: number;
+  /** Skip frame extraction and return a manifest immediately, regardless of frame count. */
+  manifestOnly?: boolean;
 };
 
 export type GetFigmaSectionResult = {
@@ -962,6 +958,76 @@ export function collectFrames(
   return { frames, skipped };
 }
 
+// ---------------------------------------------------------------------------
+// Early manifest path — lightweight proxy + threshold
+// ---------------------------------------------------------------------------
+
+/**
+ * Above this frame count, skip full extraction and return a manifest
+ * immediately. Individual get_figma_data calls per frame each get a full
+ * 300 KB budget with no cross-frame compression, giving higher fidelity than
+ * cramming every frame into a single section output.
+ */
+const EARLY_MANIFEST_THRESHOLD = 5;
+
+/**
+ * Build a minimal SimplifiedDesign proxy from raw Figma node data without
+ * running the extraction pipeline. Only populates the fields consumed by
+ * groupFrames, detectDialogRoles, and buildFileSplitPlan:
+ *
+ *  - nodes[0].name / id / type            — frame identity & nodeId
+ *  - nodes[0].children[0].type / opacity  — scrim detection (hasScrimOverlay)
+ *  - nodes[0].children[*].name / componentId / children[0].name
+ *                                         — structural fingerprint
+ *  - screen.width / height                — dialog size comparison
+ */
+function buildGroupingProxy(cf: CollectedFrame, fileName: string): SimplifiedDesign {
+  const raw = cf.node as Record<string, unknown>;
+  const rawChildren = ((raw.children ?? []) as FigmaDocumentNode[]);
+
+  const nodes: import("~/extractors/types.js").SimplifiedNode[] = [
+    {
+      id: String(raw.id ?? ""),
+      name: String(raw.name ?? ""),
+      type: String(raw.type ?? "FRAME"),
+      children: rawChildren.map((c) => {
+        const cr = c as Record<string, unknown>;
+        const cChildren = ((cr.children ?? []) as FigmaDocumentNode[]);
+        return {
+          id: String(cr.id ?? ""),
+          name: String(cr.name ?? ""),
+          type: String(cr.type ?? ""),
+          opacity: cr.opacity as number | undefined,
+          componentId: cr.componentId as string | undefined,
+          children: cChildren.map((gc) => {
+            const gcr = gc as Record<string, unknown>;
+            return {
+              id: String(gcr.id ?? ""),
+              name: String(gcr.name ?? ""),
+              type: String(gcr.type ?? ""),
+            } as import("~/extractors/types.js").SimplifiedNode;
+          }),
+        } as import("~/extractors/types.js").SimplifiedNode;
+      }),
+    },
+  ];
+
+  const bbox = raw.absoluteBoundingBox as { width: number; height: number } | undefined;
+  const screen = bbox
+    ? { width: String(Math.round(bbox.width)), height: String(Math.round(bbox.height)) }
+    : undefined;
+
+  return {
+    name: fileName,
+    nodes,
+    components: {},
+    componentSets: {},
+    globalVars: { styles: {} },
+    imageAssets: [],
+    screen,
+  } as SimplifiedDesign;
+}
+
 /**
  * Construct a synthetic GetFileNodesResponse so that a single FRAME child
  * can be passed through the existing simplifyRawFigmaObject pipeline without
@@ -1090,8 +1156,8 @@ function buildManifestOutput(p: ManifestParams): string {
     fileKey: p.fileKey,
     totalFrames,
     instructions: [
-      "输出超限，已切换清单模式。按以下流程逐页生成，禁止凭记忆或项目已有代码补齐未拉取的页面：",
-      `1. 按 groups 顺序，对每个 frame 调用 get_figma_data(fileKey="${p.fileKey}", nodeId=<frame.nodeId>) 获取该页完整数据`,
+      "清单模式已激活。按以下流程逐帧生成，禁止凭记忆或项目已有代码补齐未拉取的页面：",
+      `1. 按 groups 顺序，对每个 frame 调用 get_figma_data(fileKey="${p.fileKey}", nodeId=<frame.nodeId>) 逐帧取数；取一帧、生成一帧、再取下一帧`,
       "2. 每获取一页立即生成到该帧的 suggestedFile，完成后再取下一页；维护一份已完成清单，逐页勾选，中断后从未勾选项继续",
       "3. 文件归属以本清单 files 为准；imageAssets 以本清单为准（单页数据缺少 section 级去重信息），下载按 group 分批，避免一次请求过多触发限流",
       "4. 标 oversized: true 的帧，单页拉取仍可能触发有损压缩：优先用该页数据中的 regionHints 区域分组，配合 depth 参数分次拉取子树后再拼装",
@@ -1132,7 +1198,8 @@ function buildManifestOutput(p: ManifestParams): string {
             ...(p.filePlan?.assignments.get(f)
               ? { suggestedFile: p.filePlan.assignments.get(f) }
               : {}),
-            approxSizeKb: sizeKb,
+            // approxSizeKb is absent in early-manifest mode (renders is empty).
+            ...(sizeKb > 0 ? { approxSizeKb: sizeKb } : {}),
             ...(sizeKb > OUTPUT_SIZE_LIMIT_KB ? { oversized: true } : {}),
             ...(isLikelyNonPage(frameName) ? { nonPageSuspect: true } : {}),
           };
@@ -1213,7 +1280,59 @@ export async function getFigmaSectionFromRaw(
     );
   }
 
-  // 4. Process each FRAME through the extraction pipeline
+  // Global _REQUIRED_RULES (skills) — included once at the top of the decision
+  // tree so both the early-manifest path and the full path share the same value.
+  const _REQUIRED_RULES = skills
+    ?.filter((s) => s.category !== "workflow")
+    .map((s) => ({
+      uri: `skill://${s.name}`,
+      summary: s.description,
+    }));
+
+  // 4. Early manifest path — skip the extraction pipeline entirely when the
+  //    section clearly has too many frames to fit in one output. Each frame
+  //    fetched later via get_figma_data gets its own 300 KB budget with no
+  //    cross-frame compression, giving higher fidelity than section output.
+  if (frames.length > EARLY_MANIFEST_THRESHOLD || input.manifestOnly) {
+    const sectionPaths = new Map<SimplifiedDesign, string[]>();
+    const proxies = frames.map((cf) => {
+      const proxy = buildGroupingProxy(cf, apiResponse.name ?? "");
+      if (cf.sectionPath.length > 0) sectionPaths.set(proxy, cf.sectionPath);
+      return proxy;
+    });
+
+    const groups = groupFrames(proxies, sectionPaths);
+    for (const g of groups) {
+      const { roles, confidences } = detectDialogRoles(g.frames);
+      g.dialogRoles = roles;
+      g.dialogConfidences = confidences;
+    }
+    const mergedGroups = mergeDialogOrphans(groups);
+    const filePlan = buildFileSplitPlan(mergedGroups);
+
+    const isYaml = outputFormat === "yaml";
+    const headerNote = isYaml
+      ? `# ⚡ 快速清单（跳过了帧解析，approxSizeKb 不可用）。逐帧取数后若单帧超限请配合 depth/regionHints 分段拉取。\n`
+      : "";
+
+    return {
+      formatted:
+        headerNote +
+        buildManifestOutput({
+          sectionName,
+          fileKey: input.fileKey,
+          groups: mergedGroups,
+          filePlan,
+          skipped: collected.skipped,
+          renders: [],
+          requiredRules: _REQUIRED_RULES,
+          outputFormat,
+          fullSizeKb: 0,
+        }),
+    };
+  }
+
+  // 5. Full extraction path — runs only for small sections (≤ EARLY_MANIFEST_THRESHOLD frames).
   const simplifiedFrames: SimplifiedDesign[] = [];
   const sectionPaths = new Map<SimplifiedDesign, string[]>();
   const allImageAssets = new Map<string, ImageAsset>();
@@ -1252,20 +1371,12 @@ export async function getFigmaSectionFromRaw(
   //     pre-split output.
   const filePlan = buildFileSplitPlan(mergedGroups);
 
-  // 6. Build output — adaptive: full → per-frame compression → manifest.
+  // 6. Build output — full data or manifest when over limit.
   // The section path used to concatenate frames with NO size check, bypassing
   // the serializeWithSizeLimit protection get_figma_data has. Past the MCP
   // client's tool-result limit the client truncates at an arbitrary byte:
   // trailing frames vanish silently. Degrade explicitly instead.
   const dedupedAssets = Array.from(allImageAssets.values());
-
-  // Global _REQUIRED_RULES (skills) — included once, not per frame
-  const _REQUIRED_RULES = skills
-    ?.filter((s) => s.category !== "workflow")
-    .map((s) => ({
-      uri: `skill://${s.name}`,
-      summary: s.description,
-    }));
 
   const isYaml = outputFormat === "yaml";
   const sep = isYaml ? "\n---\n" : "\n";
@@ -1294,10 +1405,8 @@ export async function getFigmaSectionFromRaw(
       : "";
 
   // Per-frame blocks — iterate through groups so we can label each block
-  // with its group context. `compress` applies the lossless + structural
-  // compression stages per frame (hints are computed from the original
-  // nodes BEFORE compaction — node ids survive it, so references stay valid).
-  const renderBlocks = (compress: boolean): FrameRender[] => {
+  // with its group context.
+  const renderBlocks = (): FrameRender[] => {
     const renders: FrameRender[] = [];
     let globalFrameNum = 0;
 
@@ -1323,27 +1432,8 @@ export async function getFigmaSectionFromRaw(
         const layoutHints = screen ? generateLayoutHints(screen, outputPlatform) : [];
         const regionHints = generateRegionHints(frame.nodes, frame.globalVars);
 
-        let nodes = frame.nodes;
-        let globalVars = frame.globalVars;
-        const compressionNotes: string[] = [];
-        if (compress) {
-          nodes = deepClone(frame.nodes) as typeof frame.nodes;
-          globalVars = deepClone(frame.globalVars) as typeof frame.globalVars;
-          compactDesign(
-            nodes as unknown as Record<string, unknown>[],
-            globalVars as unknown as Record<string, unknown>,
-          );
-          const truncated = truncateLongTexts(nodes as unknown as Record<string, unknown>[]);
-          if (truncated > 0) {
-            compressionNotes.push("Text values ending in '... [truncated]' were shortened for size.");
-          }
-          const collapsed = collapseRepeats(nodes as unknown as Record<string, unknown>[]);
-          if (collapsed > 0) {
-            compressionNotes.push(
-              "_repeatOf: identical sibling structure collapsed — reuse the referenced template's layout; only name/texts differ.",
-            );
-          }
-        }
+        const nodes = frame.nodes;
+        const globalVars = frame.globalVars;
 
         const displayName = stateHint
           ? `${frame.name} → ${stateHint}`
@@ -1381,7 +1471,6 @@ export async function getFigmaSectionFromRaw(
           screen,
           layoutHints,
           regionHints,
-          ...(compressionNotes.length > 0 ? { _compressionNotes: compressionNotes } : {}),
         };
 
         const serialized = serializeResult(result, outputFormat);
@@ -1423,17 +1512,9 @@ export async function getFigmaSectionFromRaw(
   const overLimit = (s: string): boolean =>
     Buffer.byteLength(s, "utf8") / 1024 > OUTPUT_SIZE_LIMIT_KB;
 
-  let renders = renderBlocks(false);
-  let assembled = header + renders.map((r) => r.block).join(sep) + rulesBlock + assetsBlock;
+  const renders = renderBlocks();
+  const assembled = header + renders.map((r) => r.block).join(sep) + rulesBlock + assetsBlock;
   const fullSizeKb = Math.round(Buffer.byteLength(assembled, "utf8") / 1024);
-
-  if (overLimit(assembled)) {
-    renders = renderBlocks(true);
-    const note = isYaml
-      ? `# 注：完整输出约 ${fullSizeKb}KB 超过 ${OUTPUT_SIZE_LIMIT_KB}KB 上限，已应用压缩（详见各帧 _compressionNotes）\n`
-      : "";
-    assembled = header + note + renders.map((r) => r.block).join(sep) + rulesBlock + assetsBlock;
-  }
 
   if (overLimit(assembled)) {
     return {
