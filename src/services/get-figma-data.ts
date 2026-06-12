@@ -101,8 +101,9 @@ export function generateLayoutHints(screen: { width: string; height: string }, p
  * Above this size the LLM risks hitting its tool-result token limit and seeing
  * nothing at all, so staged compression kicks in (docs/plan-output-size-limit.md).
  * Below it, output is byte-for-byte what the simplify pipeline produced.
+ * Exported: the section pipeline budgets against the same client-side limit.
  */
-const OUTPUT_SIZE_LIMIT_KB = 300;
+export const OUTPUT_SIZE_LIMIT_KB = 300;
 
 function sizeKb(s: string): number {
   return Buffer.byteLength(s, "utf8") / 1024;

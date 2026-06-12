@@ -114,7 +114,7 @@ async function getFigmaNode(
         // Collect all FRAME descendants (including those nested inside child SECTIONs).
         const sectionDoc = Object.values(rawResult.data.nodes ?? {})[0]?.document as FigmaDocumentNode | undefined;
         const childFrameIds: string[] = sectionDoc
-          ? collectFrames(sectionDoc).map((c) => c.id)
+          ? collectFrames(sectionDoc).frames.map((c) => c.node.id)
           : [];
 
         const previews = await Promise.all(

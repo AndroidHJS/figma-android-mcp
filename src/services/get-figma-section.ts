@@ -19,7 +19,13 @@ import { inferAnchors } from "~/transformers/anchor-inference.js";
 import { detectAndProcessOverlays } from "~/transformers/overlay-detection.js";
 import { processInstanceOverrides } from "~/transformers/instance-overrides.js";
 import { generateRegionHints } from "~/transformers/region-hints.js";
-import { generateLayoutHints } from "~/services/get-figma-data.js";
+import { generateLayoutHints, OUTPUT_SIZE_LIMIT_KB } from "~/services/get-figma-data.js";
+import {
+  compactDesign,
+  collapseRepeats,
+  truncateLongTexts,
+  deepClone,
+} from "~/services/compact-design.js";
 
 export type GetFigmaSectionInput = {
   fileKey: string;
@@ -144,6 +150,20 @@ function isDialogName(name: string): boolean {
 }
 
 /**
+ * Frames that are probably NOT pages: designer backups, old iterations,
+ * style guides, component showcases. In whole-project sections these get
+ * grouped and generated as bogus pages. Heuristic ANNOTATES only — never
+ * drops: a false "non-page" label costs a confirmation question, a falsely
+ * dropped page costs silent data loss.
+ */
+const NON_PAGE_NAME =
+  /备份|旧版|废弃|存档|草稿|勿用|copy\b|backup|deprecated|draft|old\b|规范|色板|组件库|组件展示|图标库|styleguide|style\s*guide|design\s*system|palette|tokens?\b/i;
+
+function isLikelyNonPage(name: string): boolean {
+  return NON_PAGE_NAME.test(name);
+}
+
+/**
  * Parse a dp string like "375dp" to a number.
  * Returns NaN for unrecognised formats.
  */
@@ -171,10 +191,18 @@ function hasScrimOverlay(nodes: SimplifiedNode[]): boolean {
   );
 }
 
-function computeFingerprint(frame: SimplifiedDesign, index: number): StructuralFingerprint {
+function computeFingerprint(
+  frame: SimplifiedDesign,
+  index: number,
+  pathPrefix?: string,
+): StructuralFingerprint {
   const rootChild = frame.nodes[0];
   const identityName = getFrameIdentity(frame);
-  const { pageName, stateName } = parsePageIdentity(identityName);
+  const parsed = parsePageIdentity(identityName);
+  // Nested-section path becomes part of the page identity so "订单模块/默认"
+  // and "登录模块/默认" land in different groups despite identical frame names.
+  const pageName = pathPrefix ? `${pathPrefix}/${parsed.pageName}` : parsed.pageName;
+  const stateName = parsed.stateName;
 
   // For dialog frames with a scrim overlay, skip the scrim rectangle and use
   // the next child as the structural signal. Full-page frames always use the
@@ -209,8 +237,13 @@ function computeFingerprint(frame: SimplifiedDesign, index: number): StructuralF
  *   Name-diff + root-same  → MEDIUM   (structural match despite naming — merged)
  *   Name-diff + root-diff  → separate groups (different pages)
  */
-function groupFrames(frames: SimplifiedDesign[]): FrameGroup[] {
-  const fingerprints = frames.map((f, i) => computeFingerprint(f, i));
+function groupFrames(
+  frames: SimplifiedDesign[],
+  sectionPaths?: Map<SimplifiedDesign, string[]>,
+): FrameGroup[] {
+  const fingerprints = frames.map((f, i) =>
+    computeFingerprint(f, i, sectionPaths?.get(f)?.join("/") || undefined),
+  );
 
   // Primary: group by parsedPageName.
   const nameGroups = new Map<string, StructuralFingerprint[]>();
@@ -673,6 +706,7 @@ function buildHeaderBlock(
   groups: FrameGroup[],
   imageAssets: ImageAsset[],
   filePlan: FileSplitPlan | undefined,
+  skipped: CollectedFrames["skipped"] = [],
 ): string {
   const totalFrames = groups.reduce((sum, g) => sum + g.frames.length, 0);
   const isMultiPage = groups.length > 1;
@@ -697,6 +731,20 @@ function buildHeaderBlock(
     `# 包含 ${totalFrames} 个 Frame`,
     "#",
   ];
+
+  // Skipped nodes are reported, never silently dropped — a COMPONENT-built
+  // page landing here is the user's only chance to notice it's missing.
+  if (skipped.length > 0) {
+    lines.push(
+      `# ⚠️ 跳过 ${skipped.length} 个非 Frame 顶层节点（不参与生成，如其中有页面请告知）：`,
+    );
+    const maxShow = Math.min(skipped.length, 8);
+    for (let i = 0; i < maxShow; i++) {
+      lines.push(`#   - ${skipped[i].name} (${skipped[i].type})`);
+    }
+    if (skipped.length > maxShow) lines.push(`#   ... (${skipped.length - maxShow} more)`);
+    lines.push("#");
+  }
 
   if (isMultiPage) {
     lines.push(
@@ -731,7 +779,8 @@ function buildHeaderBlock(
           g.dialogRoles[j] === "dialog"
             ? `  🎭 对话框${g.dialogConfidences[j] === "medium" ? " (尺寸偏小)" : ""}`
             : "";
-        lines.push(`#   ${globalIdx}. ${f.name}${stateHint}${dialogTag}`);
+        const nonPageTag = isLikelyNonPage(f.name) ? "  ⚠️ 疑似非页面帧（备份/规范/组件库），请确认" : "";
+        lines.push(`#   ${globalIdx}. ${f.name}${stateHint}${dialogTag}${nonPageTag}`);
       }
       lines.push("#");
     }
@@ -766,7 +815,8 @@ function buildHeaderBlock(
         g.dialogRoles[i] === "dialog"
           ? `  🎭 对话框${g.dialogConfidences[i] === "medium" ? " (尺寸偏小)" : ""}`
           : "";
-      lines.push(`#   ${i + 1}. ${f.name}${stateHint}${dialogTag}`);
+      const nonPageTag = isLikelyNonPage(f.name) ? "  ⚠️ 疑似非页面帧（备份/规范/组件库），请确认" : "";
+      lines.push(`#   ${i + 1}. ${f.name}${stateHint}${dialogTag}${nonPageTag}`);
     }
     lines.push("#");
   }
@@ -847,30 +897,69 @@ function buildHeaderBlock(
 // Figma API helpers (unchanged)
 // ---------------------------------------------------------------------------
 
+/** A page-like node collected from a SECTION, with its nested-section path. */
+export type CollectedFrame = {
+  node: FigmaDocumentNode;
+  /**
+   * Names of nested SECTIONs from the root section down to this frame
+   * (empty for direct children). Disambiguates same-named frames across
+   * modules ("订单模块/默认" vs "登录模块/默认") — without it the
+   * name-based grouping merges them into one bogus page group.
+   */
+  sectionPath: string[];
+};
+
+export type CollectedFrames = {
+  frames: CollectedFrame[];
+  /**
+   * Top-level nodes that are neither frame-like nor SECTION. Surfaced in
+   * the output header — silently skipping is how COMPONENT-built pages
+   * used to vanish from section output with no warning.
+   */
+  skipped: { name: string; type: string }[];
+};
+
 /**
- * Collect all FRAME descendants of a SECTION node, recursing into nested
+ * COMPONENT / COMPONENT_SET carry full frame traits and designers do build
+ * pages as components. INSTANCE is deliberately excluded: top-level
+ * instances inside sections are usually decorations/stickers, and a missed
+ * page-instance still shows up in the skipped warning for the user to see.
+ */
+const FRAME_LIKE_TYPES = new Set(["FRAME", "COMPONENT", "COMPONENT_SET"]);
+
+/**
+ * Collect all page-like descendants of a SECTION node, recursing into nested
  * SECTIONs. Designers often group frames by page/feature inside child
  * SECTIONs (e.g. "登录注册" → "登录页" → frames); a flat scan would miss
  * every frame and fail with "no FRAME children".
  */
-export function collectFrames(sectionNode: FigmaDocumentNode): FigmaDocumentNode[] {
+export function collectFrames(
+  sectionNode: FigmaDocumentNode,
+  sectionPath: string[] = [],
+): CollectedFrames {
   if (!("children" in sectionNode) || !Array.isArray((sectionNode as Record<string, unknown>).children)) {
-    return [];
+    return { frames: [], skipped: [] };
   }
 
-  const frames: FigmaDocumentNode[] = [];
+  const frames: CollectedFrame[] = [];
+  const skipped: CollectedFrames["skipped"] = [];
   const children = (sectionNode as Record<string, unknown>).children as FigmaDocumentNode[];
 
   for (const child of children) {
-    const type = (child as Record<string, unknown>).type;
-    if (type === "FRAME") {
-      frames.push(child);
+    const c = child as Record<string, unknown>;
+    const type = String(c.type);
+    if (FRAME_LIKE_TYPES.has(type)) {
+      frames.push({ node: child, sectionPath });
     } else if (type === "SECTION") {
-      frames.push(...collectFrames(child));
+      const nested = collectFrames(child, [...sectionPath, String(c.name ?? "")]);
+      frames.push(...nested.frames);
+      skipped.push(...nested.skipped);
+    } else {
+      skipped.push({ name: String(c.name ?? ""), type });
     }
   }
 
-  return frames;
+  return { frames, skipped };
 }
 
 /**
@@ -938,6 +1027,138 @@ async function processFrame(
 }
 
 // ---------------------------------------------------------------------------
+// Adaptive output — manifest mode
+// ---------------------------------------------------------------------------
+
+/** One serialized frame block plus the metadata manifest mode needs. */
+type FrameRender = {
+  block: string;
+  sizeBytes: number;
+  frame: SimplifiedDesign;
+  suggestedFile?: string;
+};
+
+type ManifestParams = {
+  sectionName: string;
+  fileKey: string;
+  groups: FrameGroup[];
+  filePlan: FileSplitPlan | undefined;
+  skipped: CollectedFrames["skipped"];
+  /** Latest (compressed) renders — their sizes predict per-frame fetch cost. */
+  renders: FrameRender[];
+  requiredRules: { uri: string; summary: string }[] | undefined;
+  outputFormat: "yaml" | "json";
+  fullSizeKb: number;
+};
+
+/**
+ * Manifest mode — the L2 degradation for sections whose data cannot fit one
+ * tool result even compressed (a whole-project section of heterogeneous
+ * pages). Ships NO frame design data; instead ships everything the section
+ * pass uniquely computes — grouping, dialog roles, file split plan,
+ * deduplicated assets — plus per-frame nodeIds and re-fetch instructions, so
+ * the LLM generates page by page. An explicit partial answer beats a
+ * silently truncated "complete" one, and one-context-20-pages generation
+ * would be an attention disaster even if the data fit.
+ */
+function buildManifestOutput(p: ManifestParams): string {
+  const isYaml = p.outputFormat === "yaml";
+  const totalFrames = p.groups.reduce((sum, g) => sum + g.frames.length, 0);
+  const sizeByFrame = new Map<SimplifiedDesign, number>();
+  for (const r of p.renders) sizeByFrame.set(r.frame, r.sizeBytes);
+
+  const lines: string[] = [];
+  if (isYaml) {
+    lines.push(
+      "# ============================================================",
+      `# Section: ${p.sectionName} — 清单模式（manifest）`,
+      `# 完整数据约 ${p.fullSizeKb}KB，压缩后仍超过单次输出上限 ${OUTPUT_SIZE_LIMIT_KB}KB。`,
+      "# 本响应不含 Frame 设计数据，仅含分组清单与续取指令。",
+    );
+    if (p.skipped.length > 0) {
+      lines.push(
+        `# ⚠️ 跳过 ${p.skipped.length} 个非 Frame 顶层节点（如其中有页面请告知）：` +
+          p.skipped.slice(0, 5).map((s) => ` ${s.name}[${s.type}]`).join(","),
+      );
+    }
+    lines.push("# ============================================================");
+  }
+
+  const payload: Record<string, unknown> = {
+    manifestMode: true,
+    section: p.sectionName,
+    fileKey: p.fileKey,
+    totalFrames,
+    instructions: [
+      "输出超限，已切换清单模式。按以下流程逐页生成，禁止凭记忆或项目已有代码补齐未拉取的页面：",
+      `1. 按 groups 顺序，对每个 frame 调用 get_figma_data(fileKey="${p.fileKey}", nodeId=<frame.nodeId>) 获取该页完整数据`,
+      "2. 每获取一页立即生成到该帧的 suggestedFile，完成后再取下一页；维护一份已完成清单，逐页勾选，中断后从未勾选项继续",
+      "3. 文件归属以本清单 files 为准；imageAssets 以本清单为准（单页数据缺少 section 级去重信息），下载按 group 分批，避免一次请求过多触发限流",
+      "4. 标 oversized: true 的帧，单页拉取仍可能触发有损压缩：优先用该页数据中的 regionHints 区域分组，配合 depth 参数分次拉取子树后再拼装",
+      "5. 标 nonPageSuspect: true 的帧疑似备份/规范/组件库，生成前先与用户确认",
+    ],
+    ...(p.filePlan
+      ? {
+          files: p.filePlan.files.map((f) => ({
+            fileName: f.fileName,
+            kind: f.kind,
+            pageName: f.pageName,
+            stateLabels: f.stateLabels,
+          })),
+        }
+      : {}),
+    groups: p.groups.map((g) => {
+      // Per-group asset union (deduped by nodeId) — the full list, unlike the
+      // capped header preview: in manifest mode this IS the asset manifest.
+      const groupAssets = new Map<string, ImageAsset>();
+      for (const f of g.frames) {
+        for (const a of f.imageAssets) {
+          if (!groupAssets.has(a.nodeId)) groupAssets.set(a.nodeId, a);
+        }
+      }
+      return {
+        pageName: g.pageName,
+        confidence: g.confidence,
+        frames: g.frames.map((f, i) => {
+          const sizeKb = Math.round(((sizeByFrame.get(f) ?? 0) / 1024) * 10) / 10;
+          // nodes[0] IS the frame node; f.name is the FILE name (identical
+          // for every frame) — useless as a manifest label.
+          const frameName = f.nodes[0]?.name ?? f.name;
+          return {
+            nodeId: f.nodes[0]?.id,
+            name: frameName,
+            stateLabel: g.stateLabels[i],
+            dialogRole: g.dialogRoles[i],
+            ...(p.filePlan?.assignments.get(f)
+              ? { suggestedFile: p.filePlan.assignments.get(f) }
+              : {}),
+            approxSizeKb: sizeKb,
+            ...(sizeKb > OUTPUT_SIZE_LIMIT_KB ? { oversized: true } : {}),
+            ...(isLikelyNonPage(frameName) ? { nonPageSuspect: true } : {}),
+          };
+        }),
+        ...(groupAssets.size > 0
+          ? {
+              imageAssets: Array.from(groupAssets.values()).map((a) => ({
+                nodeId: a.nodeId,
+                name: a.name,
+                category: a.category,
+                suggestedFileName: a.suggestedFileName,
+              })),
+            }
+          : {}),
+      };
+    }),
+    ...(p.requiredRules && p.requiredRules.length > 0
+      ? { _REQUIRED_RULES: p.requiredRules }
+      : {}),
+  };
+
+  const serialized = serializeResult(payload, p.outputFormat);
+  return isYaml ? `${lines.join("\n")}\n${serialized}` : serialized;
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -976,20 +1197,29 @@ export async function getFigmaSectionFromRaw(
 
   const sectionName = (sectionNode as Record<string, unknown>).name as string;
 
-  // 3. Collect direct FRAME children
-  const frames = collectFrames(sectionNode);
+  // 3. Collect page-like children (FRAME / COMPONENT / COMPONENT_SET)
+  const collected = collectFrames(sectionNode);
+  const frames = collected.frames;
   if (frames.length === 0) {
+    const skippedHint =
+      collected.skipped.length > 0
+        ? ` (${collected.skipped.length} non-frame top-level nodes were skipped: ${collected.skipped
+            .slice(0, 5)
+            .map((s) => `${s.name}[${s.type}]`)
+            .join(", ")})`
+        : "";
     throw new Error(
-      `SECTION "${sectionName}" contains no FRAME children. A SECTION must contain at least one FRAME.`,
+      `SECTION "${sectionName}" contains no FRAME children. A SECTION must contain at least one FRAME.${skippedHint}`,
     );
   }
 
   // 4. Process each FRAME through the extraction pipeline
   const simplifiedFrames: SimplifiedDesign[] = [];
+  const sectionPaths = new Map<SimplifiedDesign, string[]>();
   const allImageAssets = new Map<string, ImageAsset>();
 
-  for (const frame of frames) {
-    const simplified = await processFrame(frame, apiResponse, depth, outputPlatform, input.fileKey);
+  for (const cf of frames) {
+    const simplified = await processFrame(cf.node, apiResponse, depth, outputPlatform, input.fileKey);
 
     // Deduplicate image assets by nodeId across frames
     for (const asset of simplified.imageAssets) {
@@ -998,11 +1228,12 @@ export async function getFigmaSectionFromRaw(
       }
     }
 
+    if (cf.sectionPath.length > 0) sectionPaths.set(simplified, cf.sectionPath);
     simplifiedFrames.push(simplified);
   }
 
   // 5. Cluster frames into page groups
-  const groups = groupFrames(simplifiedFrames);
+  const groups = groupFrames(simplifiedFrames, sectionPaths);
 
   // 5a. Detect dialog/modal frames within each group
   for (const g of groups) {
@@ -1021,7 +1252,11 @@ export async function getFigmaSectionFromRaw(
   //     pre-split output.
   const filePlan = buildFileSplitPlan(mergedGroups);
 
-  // 6. Build output
+  // 6. Build output — adaptive: full → per-frame compression → manifest.
+  // The section path used to concatenate frames with NO size check, bypassing
+  // the serializeWithSizeLimit protection get_figma_data has. Past the MCP
+  // client's tool-result limit the client truncates at an arbitrary byte:
+  // trailing frames vanish silently. Degrade explicitly instead.
   const dedupedAssets = Array.from(allImageAssets.values());
 
   // Global _REQUIRED_RULES (skills) — included once, not per frame
@@ -1036,119 +1271,187 @@ export async function getFigmaSectionFromRaw(
   const sep = isYaml ? "\n---\n" : "\n";
 
   // Header: grouped frame overview + AI guidance + deduplicated imageAssets
-  let output = buildHeaderBlock(sectionName, mergedGroups, dedupedAssets, filePlan);
+  const header = buildHeaderBlock(
+    sectionName,
+    mergedGroups,
+    dedupedAssets,
+    filePlan,
+    collected.skipped,
+  );
+
+  const rulesBlock =
+    _REQUIRED_RULES && _REQUIRED_RULES.length > 0
+      ? isYaml
+        ? `\n\n# ============================================================\n# _REQUIRED_RULES (global constraints)\n# ============================================================\n${serializeResult({ _REQUIRED_RULES }, outputFormat)}`
+        : `\n${serializeResult({ _REQUIRED_RULES }, outputFormat)}`
+      : "";
+
+  const assetsBlock =
+    dedupedAssets.length > 0
+      ? isYaml
+        ? `\n\n# ============================================================\n# imageAssets (deduplicated, shared across all states)\n# ============================================================\n${serializeResult({ imageAssets: dedupedAssets }, outputFormat)}`
+        : `\n${serializeResult({ imageAssets: dedupedAssets }, outputFormat)}`
+      : "";
 
   // Per-frame blocks — iterate through groups so we can label each block
-  // with its group context.
-  const blocks: string[] = [];
-  let globalFrameNum = 0;
+  // with its group context. `compress` applies the lossless + structural
+  // compression stages per frame (hints are computed from the original
+  // nodes BEFORE compaction — node ids survive it, so references stay valid).
+  const renderBlocks = (compress: boolean): FrameRender[] => {
+    const renders: FrameRender[] = [];
+    let globalFrameNum = 0;
 
-  for (const group of mergedGroups) {
-    const isMultiPage = mergedGroups.length > 1;
-    // A single group formed by structural merge still needs group context
-    // in labels and metadata so the AI knows naming actually differs.
-    const needsGroupContext = isMultiPage || group.confidence === "medium";
+    for (const group of mergedGroups) {
+      const isMultiPage = mergedGroups.length > 1;
+      // A single group formed by structural merge still needs group context
+      // in labels and metadata so the AI knows naming actually differs.
+      const needsGroupContext = isMultiPage || group.confidence === "medium";
 
-    for (let i = 0; i < group.frames.length; i++) {
-      globalFrameNum++;
-      const frame = group.frames[i];
-      const { nodes, globalVars, screen } = frame;
+      for (let i = 0; i < group.frames.length; i++) {
+        globalFrameNum++;
+        const frame = group.frames[i];
+        const { screen } = frame;
 
-      // The first root child often carries the actual state distinction when
-      // all frames share the same SECTION-level name (e.g. "订单详情-审核中").
-      const rootChildName = nodes[0]?.name;
-      const stateHint =
-        rootChildName && rootChildName !== frame.name
-          ? rootChildName
-          : undefined;
+        // The first root child often carries the actual state distinction when
+        // all frames share the same SECTION-level name (e.g. "订单详情-审核中").
+        const rootChildName = frame.nodes[0]?.name;
+        const stateHint =
+          rootChildName && rootChildName !== frame.name
+            ? rootChildName
+            : undefined;
 
-      const layoutHints = screen ? generateLayoutHints(screen, outputPlatform) : [];
-      const regionHints = generateRegionHints(nodes, globalVars);
+        const layoutHints = screen ? generateLayoutHints(screen, outputPlatform) : [];
+        const regionHints = generateRegionHints(frame.nodes, frame.globalVars);
 
-      const displayName = stateHint
-        ? `${frame.name} → ${stateHint}`
-        : frame.name;
-
-      // Block label: include group context for multi-page sections.
-      let blockHeader: string;
-      if (needsGroupContext) {
-        blockHeader = isYaml
-          ? `# ---- [${group.pageName}] 状态 ${i + 1}/${group.frames.length}: ${displayName} ----`
-          : "";
-      } else {
-        blockHeader = isYaml
-          ? `# ---- 状态 ${globalFrameNum}/${simplifiedFrames.length}: ${displayName} ----`
-          : "";
-      }
-
-      const suggestedFile = filePlan?.assignments.get(frame);
-
-      const result: Record<string, unknown> = {
-        metadata: {
-          name: frame.name,
-          ...(stateHint ? { stateHint } : {}),
-          ...(needsGroupContext
-            ? { pageGroup: group.pageName, groupConfidence: group.confidence }
-            : {}),
-          dialogRole: group.dialogRoles[i],
-          ...(group.dialogRoles[i] === "dialog"
-            ? { dialogConfidence: group.dialogConfidences[i] }
-            : {}),
-          ...(suggestedFile ? { suggestedFile } : {}),
-        },
-        nodes,
-        globalVars,
-        screen,
-        layoutHints,
-        regionHints,
-      };
-
-      let serialized = serializeResult(result, outputFormat);
-
-      if (isYaml) {
-        // Per-frame file attribution as a comment line, mirroring
-        // metadata.suggestedFile. Attribution lines instead of FILE N/M
-        // bracket markers: frames map many-to-one onto files and dialog
-        // frames interleave with page frames inside a group, so bracket
-        // pairs would either repeat or force reordering the output.
-        if (suggestedFile) {
-          blockHeader = `${blockHeader}\n# 归属文件: ${suggestedFile}`;
+        let nodes = frame.nodes;
+        let globalVars = frame.globalVars;
+        const compressionNotes: string[] = [];
+        if (compress) {
+          nodes = deepClone(frame.nodes) as typeof frame.nodes;
+          globalVars = deepClone(frame.globalVars) as typeof frame.globalVars;
+          compactDesign(
+            nodes as unknown as Record<string, unknown>[],
+            globalVars as unknown as Record<string, unknown>,
+          );
+          const truncated = truncateLongTexts(nodes as unknown as Record<string, unknown>[]);
+          if (truncated > 0) {
+            compressionNotes.push("Text values ending in '... [truncated]' were shortened for size.");
+          }
+          const collapsed = collapseRepeats(nodes as unknown as Record<string, unknown>[]);
+          if (collapsed > 0) {
+            compressionNotes.push(
+              "_repeatOf: identical sibling structure collapsed — reuse the referenced template's layout; only name/texts differ.",
+            );
+          }
         }
-        const frameAssets =
-          frame.imageAssets.length > 0
-            ? frame.imageAssets
-                .map((a) => `#   - ${a.name} (${a.category})`)
-                .join("\n")
+
+        const displayName = stateHint
+          ? `${frame.name} → ${stateHint}`
+          : frame.name;
+
+        // Block label: include group context for multi-page sections.
+        let blockHeader: string;
+        if (needsGroupContext) {
+          blockHeader = isYaml
+            ? `# ---- [${group.pageName}] 状态 ${i + 1}/${group.frames.length}: ${displayName} ----`
             : "";
-        const frameHeader = frameAssets
-          ? `${blockHeader}\n# imageAssets for this state:\n${frameAssets}\n${serialized}`
-          : `${blockHeader}\n${serialized}`;
-        blocks.push(frameHeader);
-      } else {
-        blocks.push(serialized);
+        } else {
+          blockHeader = isYaml
+            ? `# ---- 状态 ${globalFrameNum}/${simplifiedFrames.length}: ${displayName} ----`
+            : "";
+        }
+
+        const suggestedFile = filePlan?.assignments.get(frame);
+
+        const result: Record<string, unknown> = {
+          metadata: {
+            name: frame.name,
+            ...(stateHint ? { stateHint } : {}),
+            ...(needsGroupContext
+              ? { pageGroup: group.pageName, groupConfidence: group.confidence }
+              : {}),
+            dialogRole: group.dialogRoles[i],
+            ...(group.dialogRoles[i] === "dialog"
+              ? { dialogConfidence: group.dialogConfidences[i] }
+              : {}),
+            ...(suggestedFile ? { suggestedFile } : {}),
+          },
+          nodes,
+          globalVars,
+          screen,
+          layoutHints,
+          regionHints,
+          ...(compressionNotes.length > 0 ? { _compressionNotes: compressionNotes } : {}),
+        };
+
+        const serialized = serializeResult(result, outputFormat);
+
+        let block: string;
+        if (isYaml) {
+          // Per-frame file attribution as a comment line, mirroring
+          // metadata.suggestedFile. Attribution lines instead of FILE N/M
+          // bracket markers: frames map many-to-one onto files and dialog
+          // frames interleave with page frames inside a group, so bracket
+          // pairs would either repeat or force reordering the output.
+          if (suggestedFile) {
+            blockHeader = `${blockHeader}\n# 归属文件: ${suggestedFile}`;
+          }
+          const frameAssets =
+            frame.imageAssets.length > 0
+              ? frame.imageAssets
+                  .map((a) => `#   - ${a.name} (${a.category})`)
+                  .join("\n")
+              : "";
+          block = frameAssets
+            ? `${blockHeader}\n# imageAssets for this state:\n${frameAssets}\n${serialized}`
+            : `${blockHeader}\n${serialized}`;
+        } else {
+          block = serialized;
+        }
+
+        renders.push({
+          block,
+          sizeBytes: Buffer.byteLength(block, "utf8"),
+          frame,
+          suggestedFile,
+        });
       }
     }
+    return renders;
+  };
+
+  const overLimit = (s: string): boolean =>
+    Buffer.byteLength(s, "utf8") / 1024 > OUTPUT_SIZE_LIMIT_KB;
+
+  let renders = renderBlocks(false);
+  let assembled = header + renders.map((r) => r.block).join(sep) + rulesBlock + assetsBlock;
+  const fullSizeKb = Math.round(Buffer.byteLength(assembled, "utf8") / 1024);
+
+  if (overLimit(assembled)) {
+    renders = renderBlocks(true);
+    const note = isYaml
+      ? `# 注：完整输出约 ${fullSizeKb}KB 超过 ${OUTPUT_SIZE_LIMIT_KB}KB 上限，已应用压缩（详见各帧 _compressionNotes）\n`
+      : "";
+    assembled = header + note + renders.map((r) => r.block).join(sep) + rulesBlock + assetsBlock;
   }
 
-  output += blocks.join(sep);
-
-  // Append global _REQUIRED_RULES
-  if (_REQUIRED_RULES && _REQUIRED_RULES.length > 0) {
-    const rulesBlock = isYaml
-      ? `\n\n# ============================================================\n# _REQUIRED_RULES (global constraints)\n# ============================================================\n${serializeResult({ _REQUIRED_RULES }, outputFormat)}`
-      : `\n${serializeResult({ _REQUIRED_RULES }, outputFormat)}`;
-    output += rulesBlock;
+  if (overLimit(assembled)) {
+    return {
+      formatted: buildManifestOutput({
+        sectionName,
+        fileKey: input.fileKey,
+        groups: mergedGroups,
+        filePlan,
+        skipped: collected.skipped,
+        renders,
+        requiredRules: _REQUIRED_RULES,
+        outputFormat,
+        fullSizeKb,
+      }),
+    };
   }
 
-  // Append global imageAssets list
-  if (dedupedAssets.length > 0) {
-    const assetsBlock = isYaml
-      ? `\n\n# ============================================================\n# imageAssets (deduplicated, shared across all states)\n# ============================================================\n${serializeResult({ imageAssets: dedupedAssets }, outputFormat)}`
-      : `\n${serializeResult({ imageAssets: dedupedAssets }, outputFormat)}`;
-    output += assetsBlock;
-  }
-
-  return { formatted: output };
+  return { formatted: assembled };
 }
 
 /**

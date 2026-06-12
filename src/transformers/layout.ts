@@ -313,7 +313,72 @@ function buildSimplifiedLayoutValues(
     }
   }
 
+  if (n.type === "TEXT") {
+    applyTextSizingIntent(n, layoutValues);
+  }
+
   return layoutValues;
+}
+
+/**
+ * Text boxes get their designer-intended sizing instead of literal pixels.
+ *
+ * Fixed text dimensions translate into hard layout_width values that CLIP on
+ * device — runtime fonts render wider than the design baseline, and "Ajukan"
+ * becomes "Ajuka". The skill rule "text width is content-driven" loses to
+ * explicit data ("93dp" in front of the LLM wins), so the fix is to stop
+ * emitting fixed sizing where it isn't intent:
+ *
+ *   - textAutoResize WIDTH_AND_HEIGHT → the box hugs its content; its
+ *     width/height are incidental. Sizing becomes hug on both axes.
+ *   - textAutoResize HEIGHT → width is the wrap basis (multi-line text);
+ *     keep it, height hugs.
+ *   - textTruncation ENDING / textAutoResize TRUNCATE → the fixed box IS
+ *     the intent; untouched (text rules emit maxLines + ellipsize).
+ *   - NONE or absent → usually an accidentally-fixed single-line label.
+ *     Single-line (height ≈ one line-height) → hug both axes; taller boxes
+ *     keep their width as the wrap basis.
+ *
+ * `dimensions` are deliberately KEPT: anchor inference, region hints, and
+ * straddle detection all consume them for geometry. Only `sizing` changes —
+ * the platform mappers prefer sizing over dimensions, so the LLM sees
+ * wrap_content while the analysis passes keep exact bounds.
+ */
+function applyTextSizingIntent(n: FigmaDocumentNode, layoutValues: SimplifiedLayout): void {
+  const style = ("style" in n ? n.style : undefined) as
+    | {
+        textAutoResize?: string;
+        textTruncation?: string;
+        lineHeightPx?: number;
+        fontSize?: number;
+      }
+    | undefined;
+  if (!style) return;
+  if (style.textTruncation === "ENDING" || style.textAutoResize === "TRUNCATE") return;
+
+  const sizing = (layoutValues.sizing ??= {});
+  // Never override an explicit FILL/HUG from the API — only "fixed"/absent,
+  // where the literal pixels are the thing we distrust.
+  const canHug = (v?: string): boolean => v === undefined || v === "fixed";
+
+  if (style.textAutoResize === "WIDTH_AND_HEIGHT") {
+    if (canHug(sizing.horizontal)) sizing.horizontal = "hug";
+    if (canHug(sizing.vertical)) sizing.vertical = "hug";
+    return;
+  }
+  if (style.textAutoResize === "HEIGHT") {
+    if (canHug(sizing.vertical)) sizing.vertical = "hug";
+    return;
+  }
+
+  // NONE / absent: single-line heuristic. 1.6× tolerates line-height
+  // rounding and small vertical padding without catching 2-line text.
+  const height = isRectangle("absoluteBoundingBox", n) ? n.absoluteBoundingBox.height : undefined;
+  const line = style.lineHeightPx ?? (style.fontSize ? style.fontSize * 1.4 : undefined);
+  if (height !== undefined && line !== undefined && height <= line * 1.6) {
+    if (canHug(sizing.horizontal)) sizing.horizontal = "hug";
+    if (canHug(sizing.vertical)) sizing.vertical = "hug";
+  }
 }
 
 // ---------------------------------------------------------------------------
