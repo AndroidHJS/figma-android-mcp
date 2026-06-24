@@ -82,6 +82,19 @@ export function loadEnvFile(envPath?: string): string {
   return envFilePath;
 }
 
+/**
+ * Resolve the custom skills directory through CLI flag → SKILLS_DIR env →
+ * undefined, normalizing to an absolute path. Shared by the server config and
+ * the `fetch` CLI so both load skills from the same place.
+ */
+export function resolveSkillsDir(flag?: string): string | undefined {
+  return resolve(
+    flag ? resolvePath(flag) : undefined,
+    envStr("SKILLS_DIR") ? resolvePath(envStr("SKILLS_DIR")!) : undefined,
+    undefined,
+  ).value;
+}
+
 export function resolveAuth(flags: {
   figmaApiKey?: string;
   figmaOauthToken?: string;
@@ -152,11 +165,7 @@ export function getServerConfig(flags: ServerFlags): ServerConfig {
     process.cwd(),
   );
 
-  const skillsDir = resolve(
-    flags.skillsDir ? resolvePath(flags.skillsDir) : undefined,
-    envStr("SKILLS_DIR") ? resolvePath(envStr("SKILLS_DIR")!) : undefined,
-    undefined,
-  ).value;
+  const skillsDir = resolveSkillsDir(flags.skillsDir);
 
   // Only resolve explicit proxy config here. Standard env vars (HTTPS_PROXY, HTTP_PROXY,
   // NO_PROXY) are handled by undici's EnvHttpProxyAgent at the dispatcher level, which

@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { inferAutoLayoutFromPositions } from "~/transformers/layout.js";
+import { inferAutoLayoutFromPositions, detectCrossAlignment } from "~/transformers/layout.js";
 import type { SimplifiedLayout } from "~/transformers/layout.js";
 import type { GlobalVars, SimplifiedNode } from "~/extractors/types.js";
 
@@ -485,6 +485,193 @@ describe("inferAutoLayoutFromPositions — edge cases", () => {
 
     // Column detection is tried first and succeeds
     expect(parentLayout.mode).toBe("column");
+  });
+});
+
+// ============================================================================
+// Cross-axis alignment inference
+// ============================================================================
+describe("inferAutoLayoutFromPositions — cross-axis alignment", () => {
+  test("center-aligned stack (differing widths, shared center) → Column with alignItems center", () => {
+    const globalVars: GlobalVars = { styles: {} };
+
+    // Centers all at x=50; left edges differ (10, 20, 0) so the old start-edge
+    // detector missed this entirely.
+    const c1L = makeLayout({
+      locationRelativeToParent: { x: "10dp", y: "0dp" },
+      dimensions: { width: "80dp", height: "20dp" },
+    });
+    const c2L = makeLayout({
+      locationRelativeToParent: { x: "20dp", y: "28dp" },
+      dimensions: { width: "60dp", height: "20dp" },
+    });
+    const c3L = makeLayout({
+      locationRelativeToParent: { x: "0dp", y: "56dp" },
+      dimensions: { width: "100dp", height: "20dp" },
+    });
+
+    const parentLayout = makeLayout();
+    const parentKey = register(globalVars, parentLayout);
+    const children: SimplifiedNode[] = [
+      makeNode({ id: "1", layout: register(globalVars, c1L) }),
+      makeNode({ id: "2", layout: register(globalVars, c2L) }),
+      makeNode({ id: "3", layout: register(globalVars, c3L) }),
+    ];
+    const parent = makeNode({ id: "0", layout: parentKey, children });
+
+    inferAutoLayoutFromPositions([parent], globalVars);
+
+    expect(parentLayout.mode).toBe("column");
+    expect(parentLayout.alignItems).toBe("center");
+  });
+
+  test("right-aligned stack (shared right edge) → Column with alignItems flex-end", () => {
+    const globalVars: GlobalVars = { styles: {} };
+
+    // Right edges all at x=100.
+    const c1L = makeLayout({
+      locationRelativeToParent: { x: "20dp", y: "0dp" },
+      dimensions: { width: "80dp", height: "20dp" },
+    });
+    const c2L = makeLayout({
+      locationRelativeToParent: { x: "40dp", y: "28dp" },
+      dimensions: { width: "60dp", height: "20dp" },
+    });
+    const c3L = makeLayout({
+      locationRelativeToParent: { x: "0dp", y: "56dp" },
+      dimensions: { width: "100dp", height: "20dp" },
+    });
+
+    const parentLayout = makeLayout();
+    const parentKey = register(globalVars, parentLayout);
+    const children: SimplifiedNode[] = [
+      makeNode({ id: "1", layout: register(globalVars, c1L) }),
+      makeNode({ id: "2", layout: register(globalVars, c2L) }),
+      makeNode({ id: "3", layout: register(globalVars, c3L) }),
+    ];
+    const parent = makeNode({ id: "0", layout: parentKey, children });
+
+    inferAutoLayoutFromPositions([parent], globalVars);
+
+    expect(parentLayout.mode).toBe("column");
+    expect(parentLayout.alignItems).toBe("flex-end");
+  });
+
+  test("center-aligned row (shared center line) → Row with alignItems center (CenterVertically)", () => {
+    const globalVars: GlobalVars = { styles: {} };
+
+    // Vertical centers at y=50; top edges differ. Side by side, no overlap.
+    const c1L = makeLayout({
+      locationRelativeToParent: { x: "0dp", y: "10dp" },
+      dimensions: { width: "40dp", height: "80dp" },
+    });
+    const c2L = makeLayout({
+      locationRelativeToParent: { x: "48dp", y: "20dp" },
+      dimensions: { width: "40dp", height: "60dp" },
+    });
+
+    const parentLayout = makeLayout();
+    const parentKey = register(globalVars, parentLayout);
+    const children: SimplifiedNode[] = [
+      makeNode({ id: "1", layout: register(globalVars, c1L) }),
+      makeNode({ id: "2", layout: register(globalVars, c2L) }),
+    ];
+    const parent = makeNode({ id: "0", layout: parentKey, children });
+
+    inferAutoLayoutFromPositions([parent], globalVars);
+
+    expect(parentLayout.mode).toBe("row");
+    expect(parentLayout.alignItems).toBe("center");
+  });
+
+  test("start-aligned column emits no alignItems (regression guard)", () => {
+    const globalVars: GlobalVars = { styles: {} };
+
+    const c1L = makeLayout({
+      locationRelativeToParent: { x: "16dp", y: "0dp" },
+      dimensions: { width: "100dp", height: "40dp" },
+    });
+    const c2L = makeLayout({
+      locationRelativeToParent: { x: "16dp", y: "48dp" },
+      dimensions: { width: "100dp", height: "40dp" },
+    });
+
+    const parentLayout = makeLayout();
+    const parentKey = register(globalVars, parentLayout);
+    const children: SimplifiedNode[] = [
+      makeNode({ id: "1", layout: register(globalVars, c1L) }),
+      makeNode({ id: "2", layout: register(globalVars, c2L) }),
+    ];
+    const parent = makeNode({ id: "0", layout: parentKey, children });
+
+    inferAutoLayoutFromPositions([parent], globalVars);
+
+    expect(parentLayout.mode).toBe("column");
+    expect(parentLayout.alignItems).toBeUndefined();
+  });
+
+  test("two distinct centered sub-stacks are NOT merged into one Column", () => {
+    const globalVars: GlobalVars = { styles: {} };
+
+    // Sub-stack A centered at x=50, sub-stack B at x=150 — combined center
+    // spread (100dp) exceeds tolerance, so the whole-parent pass must reject it.
+    const a1 = makeLayout({
+      locationRelativeToParent: { x: "10dp", y: "0dp" },
+      dimensions: { width: "80dp", height: "20dp" },
+    });
+    const a2 = makeLayout({
+      locationRelativeToParent: { x: "20dp", y: "28dp" },
+      dimensions: { width: "60dp", height: "20dp" },
+    });
+    const b1 = makeLayout({
+      locationRelativeToParent: { x: "110dp", y: "56dp" },
+      dimensions: { width: "80dp", height: "20dp" },
+    });
+    const b2 = makeLayout({
+      locationRelativeToParent: { x: "120dp", y: "84dp" },
+      dimensions: { width: "60dp", height: "20dp" },
+    });
+
+    const parentLayout = makeLayout();
+    const parentKey = register(globalVars, parentLayout);
+    const children: SimplifiedNode[] = [
+      makeNode({ id: "1", layout: register(globalVars, a1) }),
+      makeNode({ id: "2", layout: register(globalVars, a2) }),
+      makeNode({ id: "3", layout: register(globalVars, b1) }),
+      makeNode({ id: "4", layout: register(globalVars, b2) }),
+    ];
+    const parent = makeNode({ id: "0", layout: parentKey, children });
+
+    inferAutoLayoutFromPositions([parent], globalVars);
+
+    expect(parentLayout.mode).toBe("none");
+  });
+});
+
+// ============================================================================
+// detectCrossAlignment — line selection and tie-break
+// ============================================================================
+describe("detectCrossAlignment", () => {
+  test("uniform items (all lines aligned) prefer start → no alignItems", () => {
+    const result = detectCrossAlignment([0, 0, 0], [50, 50, 50]);
+    expect(result).toEqual({ edge: "start", alignItems: undefined });
+  });
+
+  test("shared center but differing starts → center", () => {
+    const result = detectCrossAlignment([10, 20, 0], [80, 60, 100]);
+    expect(result?.edge).toBe("center");
+    expect(result?.alignItems).toBe("center");
+  });
+
+  test("shared end but differing starts → end (flex-end)", () => {
+    const result = detectCrossAlignment([20, 40, 0], [80, 60, 100]);
+    expect(result?.edge).toBe("end");
+    expect(result?.alignItems).toBe("flex-end");
+  });
+
+  test("no shared line within tolerance → undefined", () => {
+    const result = detectCrossAlignment([0, 50, 100], [20, 20, 20]);
+    expect(result).toBeUndefined();
   });
 });
 

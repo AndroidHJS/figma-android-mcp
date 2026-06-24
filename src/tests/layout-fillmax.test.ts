@@ -1,5 +1,8 @@
 import { describe, test, expect } from "vitest";
-import { convertFixedChildrenToFillMax } from "~/transformers/layout.js";
+import {
+  convertFixedChildrenToFillMax,
+  inferAutoLayoutFromPositions,
+} from "~/transformers/layout.js";
 import type { SimplifiedLayout } from "~/transformers/layout.js";
 import type { GlobalVars, SimplifiedNode } from "~/extractors/types.js";
 
@@ -51,6 +54,44 @@ describe("convertFixedChildrenToFillMax — Column parent", () => {
     expect(updated.dimensions?.width).toBeUndefined();
     // generateShorthand({top:0,right:30,bottom:0,left:30}) → "0dp 30dp"
     expect(updated.padding).toBe("0dp 30dp");
+  });
+
+  test("inferred centered Column feeds fillMax conversion (cross-pass integration)", () => {
+    const globalVars: GlobalVars = { styles: {} };
+
+    // mode-"none" parent whose children share a center line → inference flips
+    // it to a centered Column, which then makes fillMax fire on the fixed-width
+    // children. This documents the new pathway: alignItems:"center" now also
+    // originates from position-based inference, not just Figma auto-layout.
+    const parentLayout = makeLayout({ dimensions: { width: "360dp", height: "200dp" } });
+    const parentKey = register(globalVars, parentLayout);
+
+    const child1Layout = makeLayout({
+      locationRelativeToParent: { x: "30dp", y: "0dp" }, // center 180
+      dimensions: { width: "300dp", height: "40dp" },
+      sizing: { horizontal: "fixed" },
+    });
+    const child2Layout = makeLayout({
+      locationRelativeToParent: { x: "80dp", y: "48dp" }, // center 180
+      dimensions: { width: "200dp", height: "40dp" },
+      sizing: { horizontal: "fixed" },
+    });
+
+    const children: SimplifiedNode[] = [
+      makeNode({ id: "1", layout: register(globalVars, child1Layout) }),
+      makeNode({ id: "2", layout: register(globalVars, child2Layout) }),
+    ];
+    const parent = makeNode({ id: "0", type: "FRAME", layout: parentKey, children });
+
+    inferAutoLayoutFromPositions([parent], globalVars);
+    expect(parentLayout.mode).toBe("column");
+    expect(parentLayout.alignItems).toBe("center");
+
+    convertFixedChildrenToFillMax([parent], globalVars);
+
+    const updated1 = globalVars.styles[children[0].layout!] as SimplifiedLayout;
+    expect(updated1.sizing?.horizontal).toBe("fill");
+    expect(updated1.padding).toBe("0dp 30dp"); // (360-300)/2 = 30
   });
 
   test("converts via child alignSelf=center (parent has no alignItems)", () => {

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { GetFileNodesResponse, Node as FigmaDocumentNode } from "@figma/rest-api-spec";
+import type { Node as FigmaDocumentNode } from "@figma/rest-api-spec";
 import { FigmaService } from "~/services/figma.js";
 import { Logger } from "~/utils/logger.js";
 import { sendProgress, startProgressHeartbeat, type ToolExtra } from "~/mcp/progress.js";
@@ -9,8 +9,8 @@ import {
   type ClientInfo,
   type Transport,
 } from "~/telemetry/index.js";
-import { getFigmaData as runGetFigmaData } from "~/services/get-figma-data.js";
-import { getFigmaSectionFromRaw, collectFrames } from "~/services/get-figma-section.js";
+import { getFigmaNode as runGetFigmaNode } from "~/services/get-figma-node.js";
+import { collectFrames } from "~/services/get-figma-section.js";
 import type { OutputPlatform } from "~/config.js";
 import type { Skill } from "~/skills/types.js";
 import type { ContentBlock } from "@modelcontextprotocol/sdk/types.js";
@@ -77,6 +77,10 @@ async function getFigmaNode(
   const startTime = Date.now();
   // Set after parsing so the catch block knows whether it has valid params for telemetry.
   let telemetryInput: { fileKey: string; nodeId: string } | undefined;
+  // Hoisted so the catch block can stop any heartbeat still running when the
+  // pipeline throws before its own stop hook fires.
+  let stopFetchHeartbeat: (() => Promise<void>) | undefined;
+  let stopSimplifyHeartbeat: (() => Promise<void>) | undefined;
   try {
     const { fileKey, nodeId: rawNodeId, depth, includePreview, outputPlatform, manifestOnly } =
       parametersSchema.parse(params);
@@ -86,44 +90,52 @@ async function getFigmaNode(
 
     Logger.log(`Fetching node ${nodeId} from file ${fileKey} (auto-routing)`);
 
-    // Step 1: fetch raw data once — shared by both routing paths
     await sendProgress(extra, 0, 3, "Fetching design data from Figma API");
-    const stopFetchHeartbeat = startProgressHeartbeat(extra, "Waiting for Figma API response");
-    let rawResult: { data: GetFileNodesResponse; rawSize: number };
-    try {
-      rawResult = await figmaService.getRawNode(fileKey, nodeId, depth) as {
-        data: GetFileNodesResponse;
-        rawSize: number;
-      };
-    } finally {
-      await stopFetchHeartbeat();
+    stopFetchHeartbeat = startProgressHeartbeat(extra, "Waiting for Figma API response");
+
+    const { formatted, rootType, raw } = await runGetFigmaNode(
+      figmaService,
+      { fileKey, nodeId, depth, manifestOnly },
+      outputFormat,
+      effectivePlatform,
+      {
+        onFetched: async () => {
+          await stopFetchHeartbeat?.();
+          stopFetchHeartbeat = undefined;
+        },
+        onRouted: async (rt) => {
+          Logger.log(`Detected node type: ${rt ?? "unknown"}`);
+          await sendProgress(extra, 1, 3, `Detected ${rt === "SECTION" ? "SECTION" : "FRAME"} node, processing`);
+        },
+        onSimplifyStart: () => {
+          stopSimplifyHeartbeat = startProgressHeartbeat(extra, "Simplifying design data");
+        },
+        onSimplifyComplete: async () => {
+          await stopSimplifyHeartbeat?.();
+          stopSimplifyHeartbeat = undefined;
+        },
+        onSerializeStart: async () => {
+          await stopSimplifyHeartbeat?.();
+          stopSimplifyHeartbeat = undefined;
+          await sendProgress(extra, 2, 3, "Simplified design, serializing response");
+        },
+        onComplete: (outcome) => captureGetFigmaDataCall(outcome, { transport, authMode, clientInfo }),
+      },
+      skills,
+    );
+
+    // The SECTION path has no simplify/serialize hooks of its own; emit its
+    // serialize milestone here so progress still reaches 2/3.
+    if (rootType === "SECTION") {
+      await sendProgress(extra, 2, 3, "Section data processed, serializing");
     }
 
-    // Step 2: detect node type from raw response — no second API call needed
-    const rootEntry = Object.values(rawResult.data.nodes ?? {})[0];
-    const rootType = (rootEntry?.document as Record<string, unknown>)?.type as string | undefined;
+    const content: ContentBlock[] = [{ type: "text", text: formatted }];
 
-    Logger.log(`Detected node type: ${rootType ?? "unknown"}`);
-
-    await sendProgress(extra, 1, 3, `Detected ${rootType === "SECTION" ? "SECTION" : "FRAME"} node, processing`);
-
-    const content: ContentBlock[] = [];
-
-    if (rootType === "SECTION") {
-      // Route to section pipeline
-      const result = await getFigmaSectionFromRaw(
-        rawResult.data,
-        { fileKey, sectionNodeId: nodeId, depth, manifestOnly },
-        outputFormat,
-        effectivePlatform,
-        skills,
-      );
-      await sendProgress(extra, 2, 3, "Section data processed, serializing");
-      content.push({ type: "text", text: result.formatted });
-
-      if (includePreview) {
+    if (includePreview) {
+      if (rootType === "SECTION") {
         // Collect all FRAME descendants (including those nested inside child SECTIONs).
-        const sectionDoc = Object.values(rawResult.data.nodes ?? {})[0]?.document as FigmaDocumentNode | undefined;
+        const sectionDoc = Object.values(raw.data.nodes ?? {})[0]?.document as FigmaDocumentNode | undefined;
         const childFrameIds: string[] = sectionDoc
           ? collectFrames(sectionDoc).frames.map((c) => c.node.id)
           : [];
@@ -144,39 +156,7 @@ async function getFigmaNode(
         if (previews.some(({ img }) => img)) {
           content.push({ type: "text", text: "以上为各状态/页面 Frame 的渲染截图，请对照校验每个状态的布局、间距、颜色与组件形态。" });
         }
-      }
-    } else {
-      // Route to standard data pipeline — pass pre-fetched data to skip re-fetch
-      const stopSimplifyHeartbeat = startProgressHeartbeat(
-        extra,
-        "Simplifying design data",
-      );
-      let stopSimplifyDone = false;
-      const result = await runGetFigmaData(
-        figmaService,
-        { fileKey, nodeId, depth, preloadedRaw: rawResult },
-        outputFormat,
-        effectivePlatform,
-        {
-          onFetchStart: async () => { /* already fetched */ },
-          onFetchComplete: async () => { /* already fetched */ },
-          onSimplifyComplete: async () => {
-            stopSimplifyDone = true;
-            await stopSimplifyHeartbeat();
-          },
-          onSerializeStart: async () => {
-            if (!stopSimplifyDone) await stopSimplifyHeartbeat();
-            await sendProgress(extra, 2, 3, "Simplified design, serializing response");
-          },
-          onComplete: (outcome) => captureGetFigmaDataCall(outcome, { transport, authMode, clientInfo }),
-        },
-        skills,
-      );
-
-      Logger.log(`Successfully extracted data: ${result.metrics.simplifiedNodeCount} nodes`);
-      content.push({ type: "text", text: result.formatted });
-
-      if (includePreview) {
+      } else {
         const preview = await figmaService.getNodePreviewImage(fileKey, nodeId);
         if (preview) {
           content.push({ type: "image", data: preview.base64, mimeType: preview.mimeType });
@@ -187,6 +167,9 @@ async function getFigmaNode(
 
     return { content };
   } catch (error) {
+    // Stop any heartbeat that was still running when the pipeline threw.
+    await stopFetchHeartbeat?.();
+    await stopSimplifyHeartbeat?.();
     const message = error instanceof Error ? error.message : JSON.stringify(error);
     Logger.error(`Error fetching node ${params.fileKey}/${params.nodeId}:`, message);
     // Fire telemetry for pre-routing errors (e.g. API failure before type detection).

@@ -1,9 +1,11 @@
 import { type Command, command } from "cleye";
-import { loadEnvFile, resolveAuth, requireGlobalCredentials, UsageError, type OutputPlatform } from "~/config.js";
+import { loadEnvFile, resolveAuth, requireGlobalCredentials, resolveSkillsDir, UsageError, type OutputPlatform } from "~/config.js";
 import { FigmaService } from "~/services/figma.js";
 import { parseFigmaUrl } from "~/utils/figma-url.js";
 import { authMode, initTelemetry, captureGetFigmaDataCall, shutdown } from "~/telemetry/index.js";
 import { getFigmaData } from "~/services/get-figma-data.js";
+import { getFigmaNode } from "~/services/get-figma-node.js";
+import { loadSkills } from "~/skills/index.js";
 
 export const fetchCommand: Command = command(
   {
@@ -47,6 +49,11 @@ export const fetchCommand: Command = command(
         type: String,
         description: "Output platform: compose (default) or views",
       },
+      skillsDir: {
+        type: String,
+        description:
+          "Path to a directory containing custom skill markdown files. Skills provide constraints and best practices for Figma-to-code conversion.",
+      },
     },
   },
   (argv) => {
@@ -70,6 +77,7 @@ async function run(
     env?: string;
     noTelemetry?: boolean;
     outputPlatform?: string;
+    skillsDir?: string;
   },
   positionals: string[],
 ) {
@@ -110,16 +118,38 @@ async function run(
   const mode = authMode(auth);
   const outputFormat = flags.json ? "json" : "yaml";
   const outputPlatform: OutputPlatform = (flags.outputPlatform as OutputPlatform) ?? "compose";
+  const figmaService = new FigmaService(auth);
+  // Load skills (built-in + optional custom dir) just like the MCP server, so
+  // CLI output carries the same `_REQUIRED_RULES` section.
+  const skills = loadSkills(resolveSkillsDir(flags.skillsDir));
+  const onComplete = (outcome: Parameters<typeof captureGetFigmaDataCall>[0]) =>
+    captureGetFigmaDataCall(outcome, { transport: "cli", authMode: mode });
 
-  const result = await getFigmaData(
-    new FigmaService(auth),
-    { fileKey, nodeId, depth: flags.depth },
-    outputFormat,
-    outputPlatform,
-    {
-      onComplete: (outcome) =>
-        captureGetFigmaDataCall(outcome, { transport: "cli", authMode: mode }),
-    },
-  );
-  console.log(result.formatted);
+  // With a nodeId, route through the same SECTION/FRAME auto-detection the
+  // MCP `get_figma_node` tool uses, so CLI output matches MCP output. Without
+  // one (whole-file fetch), getRawNode can't be used — fall back to the
+  // standard file pipeline.
+  const formatted = nodeId
+    ? (
+        await getFigmaNode(
+          figmaService,
+          { fileKey, nodeId, depth: flags.depth },
+          outputFormat,
+          outputPlatform,
+          { onComplete },
+          skills,
+        )
+      ).formatted
+    : (
+        await getFigmaData(
+          figmaService,
+          { fileKey, depth: flags.depth },
+          outputFormat,
+          outputPlatform,
+          { onComplete },
+          skills,
+        )
+      ).formatted;
+
+  console.log(formatted);
 }

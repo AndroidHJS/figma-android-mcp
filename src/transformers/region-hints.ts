@@ -5,6 +5,7 @@ import {
   GAP_TOLERANCE,
   parseDp,
   computeConsistentGap,
+  detectCrossAlignment,
 } from "~/transformers/layout.js";
 import type { ChildLayoutData } from "~/transformers/layout.js";
 import {
@@ -36,6 +37,13 @@ export interface RegionGroup {
   viewsContainer?: "FrameLayout" | "LinearLayout";
   /** For viewsContainer="LinearLayout", the orientation to use. */
   viewsOrientation?: "horizontal" | "vertical";
+  /**
+   * Cross-axis alignment of the flow's children when they share a center line
+   * or far edge rather than the near edge. Column → Compose horizontalAlignment
+   * / View gravity; Row → vertical. Absent (near-edge default) for start-aligned
+   * flows. Emitted so a centered stack renders centered instead of left-pinned.
+   */
+  crossAxisAlignment?: "center" | "end";
   /**
    * Stack regions only. childIds order = Figma z-order (bottom→top) — an
    * implicit convention the LLM routinely misses, so it is spelled out in the
@@ -259,27 +267,46 @@ function collectEligible(
 }
 
 /**
- * Anchor-based grouping: sort by target axis, then assign each item to the
- * first group whose anchor (first item's coordinate) is within ALIGN_TOLERANCE.
- * Avoids the boundary-fracture problem of simple Math.round bucketing.
+ * Anchor-based clustering: sort by `key`, then assign each item to the first
+ * group whose anchor (first item's key) is within ALIGN_TOLERANCE. Avoids the
+ * boundary-fracture problem of simple Math.round bucketing.
+ */
+function clusterBy(data: ChildDatum[], key: (d: ChildDatum) => number): ChildDatum[][] {
+  const sorted = [...data].sort((a, b) => key(a) - key(b));
+  const groups: ChildDatum[][] = [];
+  for (const item of sorted) {
+    const group = groups.find((g) => Math.abs(key(g[0]) - key(item)) <= ALIGN_TOLERANCE);
+    if (group) group.push(item);
+    else groups.push([item]);
+  }
+  return groups;
+}
+
+/**
+ * Group children that share an alignment line along `axis` (near edge first,
+ * then center line). The near-edge pass is the original behavior; centered
+ * stacks share a center line but differing near edges, so they scatter into
+ * singletons there. Re-clustering only those singletons by center recovers
+ * centered columns/rows without disturbing the near-edge groups. Far-edge
+ * alignment is left to buildFlowRegion's per-group detection — a dedicated
+ * pass adds little once center is covered.
  */
 function groupByAlignment(
   data: ChildDatum[],
   axis: "x" | "y",
 ): ChildDatum[][] {
-  const sorted = [...data].sort((a, b) => a[axis] - b[axis]);
-  const groups: ChildDatum[][] = [];
-  for (const item of sorted) {
-    const group = groups.find(
-      (g) => Math.abs(g[0][axis] - item[axis]) <= ALIGN_TOLERANCE,
-    );
-    if (group) {
-      group.push(item);
-    } else {
-      groups.push([item]);
-    }
+  const nearGroups = clusterBy(data, (d) => d[axis]);
+
+  const result: ChildDatum[][] = [];
+  const singletons: ChildDatum[] = [];
+  for (const g of nearGroups) {
+    if (g.length >= 2) result.push(g);
+    else singletons.push(g[0]);
   }
-  return groups;
+
+  const center = (d: ChildDatum) => (axis === "x" ? d.x + d.width / 2 : d.y + d.height / 2);
+  result.push(...clusterBy(singletons, center));
+  return result;
 }
 
 function overlapArea(a: ChildDatum, b: ChildDatum): number {
@@ -385,6 +412,14 @@ function buildFlowRegion(group: ChildDatum[], mode: "column" | "row"): RegionGro
 
   const gap = computeConsistentGap(layoutData, mode);
 
+  // Cross axis is horizontal for a column, vertical for a row.
+  const alignment = detectCrossAlignment(
+    group.map((d) => (mode === "column" ? d.x : d.y)),
+    group.map((d) => (mode === "column" ? d.width : d.height)),
+  );
+  const crossAxisAlignment =
+    alignment?.edge === "center" ? "center" : alignment?.edge === "end" ? "end" : undefined;
+
   return {
     mode,
     childIds: group.map((d) => d.node.id),
@@ -393,5 +428,6 @@ function buildFlowRegion(group: ChildDatum[], mode: "column" | "row"): RegionGro
     composeContainer: mode === "column" ? "Column" : "Row",
     viewsContainer: "LinearLayout",
     viewsOrientation: mode === "column" ? "vertical" : "horizontal",
+    crossAxisAlignment,
   };
 }

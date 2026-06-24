@@ -622,6 +622,57 @@ test("negative-gap card list does not merge into a mega-stack", () => {
   expect(stack).toBeUndefined();
 });
 
+// ============================================================================
+// Cross-axis alignment of flow regions
+// ============================================================================
+test("center-aligned stack forms a Column region with crossAxisAlignment center", () => {
+  const globalVars: GlobalVars = { styles: {} };
+
+  // Three children sharing center x=150 (widths 80/60/100, left edges differ),
+  // stacked vertically. The old start-edge grouping scattered these into
+  // singletons; center-line grouping recovers them as a centered column.
+  const a = childNode("ca", "A", 110, 0, 80, 40, globalVars);
+  const b = childNode("cb", "B", 120, 48, 60, 40, globalVars);
+  const c = childNode("cc", "C", 100, 96, 100, 40, globalVars);
+  // A far-off singleton so the hint clears the 2-region bar.
+  const side = childNode("side", "Side", 400, 0, 50, 40, globalVars);
+
+  const parentKey = register(globalVars, makeLayout({ mode: "none" }));
+  const parent = makeNode({
+    id: "p1", name: "Centered", type: "FRAME", layout: parentKey,
+    children: [a, b, c, side],
+  });
+
+  const hints = generateRegionHints([parent], globalVars);
+  expect(hints).toHaveLength(1);
+
+  const col = hints[0].regions.find((r) => r.mode === "column");
+  expect(col).toBeDefined();
+  expect(col!.childIds).toEqual(["ca", "cb", "cc"]);
+  expect(col!.crossAxisAlignment).toBe("center");
+});
+
+test("start-aligned Column region emits no crossAxisAlignment", () => {
+  const globalVars: GlobalVars = { styles: {} };
+
+  // Two left-aligned columns (x=0 and x=200) — the original behavior.
+  const c1 = childNode("1", "A", 0, 0, 300, 44, globalVars);
+  const c2 = childNode("2", "B", 0, 52, 300, 44, globalVars);
+  const c3 = childNode("3", "C", 200, 0, 100, 44, globalVars);
+  const c4 = childNode("4", "D", 200, 52, 100, 44, globalVars);
+
+  const parentKey = register(globalVars, makeLayout({ mode: "none" }));
+  const parent = makeNode({
+    id: "p1", name: "LeftAligned", type: "FRAME", layout: parentKey,
+    children: [c1, c2, c3, c4],
+  });
+
+  const hints = generateRegionHints([parent], globalVars);
+  const col = hints[0].regions.find((r) => r.mode === "column" && r.childIds.includes("1"));
+  expect(col).toBeDefined();
+  expect(col!.crossAxisAlignment).toBeUndefined();
+});
+
 test("dialog overlay children still get region analysis; toasts stay excluded", () => {
   const globalVars: GlobalVars = { styles: {} };
 

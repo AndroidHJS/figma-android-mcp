@@ -398,6 +398,60 @@ export function parseDp(value: string | undefined): number | undefined {
   return isNaN(num) ? undefined : num;
 }
 
+export type CrossAlign = "start" | "center" | "end";
+
+export interface AlignmentResult {
+  edge: CrossAlign;
+  /** Cross-axis alignItems value; undefined for "start" (the omitted flex default). */
+  alignItems?: "flex-end" | "center";
+}
+
+/**
+ * Decide whether a set of children share a single cross-axis alignment line,
+ * and which one. `starts` are the near-edge offsets (x for a column, y for a
+ * row) and `sizes` the extents along that same axis.
+ *
+ * Children are "aligned" when they share a start edge, a center line, OR an end
+ * edge — the original detector only recognized the start edge, so a column of
+ * center-aligned items of differing widths (centered titles, buttons, stacked
+ * illustrations) failed detection and fell through to absolute positioning.
+ *
+ * The smallest-spread line within tolerance wins; ties prefer start > center >
+ * end. Start is the safest default and emits no alignItems, so a near-uniform
+ * set (all three spreads tiny) keeps the previous start-aligned behavior.
+ */
+export function detectCrossAlignment(
+  starts: number[],
+  sizes: number[],
+  tolerance = ALIGN_TOLERANCE,
+): AlignmentResult | undefined {
+  if (starts.length === 0) return undefined;
+
+  const centers = starts.map((s, i) => s + sizes[i] / 2);
+  const ends = starts.map((s, i) => s + sizes[i]);
+
+  const spread = (vals: number[]) => Math.max(...vals) - Math.min(...vals);
+
+  const candidates: { edge: CrossAlign; spread: number }[] = [
+    { edge: "start", spread: spread(starts) },
+    { edge: "center", spread: spread(centers) },
+    { edge: "end", spread: spread(ends) },
+  ];
+
+  // Stable order already encodes the start > center > end tie-break; pick the
+  // first candidate with the minimum spread that is within tolerance.
+  let best: { edge: CrossAlign; spread: number } | undefined;
+  for (const c of candidates) {
+    if (c.spread <= tolerance && (!best || c.spread < best.spread)) best = c;
+  }
+  if (!best) return undefined;
+
+  return {
+    edge: best.edge,
+    alignItems: best.edge === "center" ? "center" : best.edge === "end" ? "flex-end" : undefined,
+  };
+}
+
 export interface ChildLayoutData {
   node: SimplifiedNode;
   layout: SimplifiedLayout;
@@ -468,8 +522,10 @@ function collectEligibleChildren(
 // ---- Column detection ------------------------------------------------------
 
 function tryInferColumn(data: ChildLayoutData[], parentLayout: SimplifiedLayout): boolean {
-  const xValues = data.map((d) => d.x);
-  if (Math.max(...xValues) - Math.min(...xValues) > ALIGN_TOLERANCE) return false;
+  // Cross axis of a column is horizontal — children may share a left edge,
+  // a center line, or a right edge.
+  const alignment = detectCrossAlignment(data.map((d) => d.x), data.map((d) => d.width));
+  if (!alignment) return false;
 
   const sorted = [...data].sort((a, b) => a.y - b.y);
 
@@ -479,6 +535,7 @@ function tryInferColumn(data: ChildLayoutData[], parentLayout: SimplifiedLayout)
   }
 
   parentLayout.mode = "column";
+  if (alignment.alignItems) parentLayout.alignItems = alignment.alignItems;
 
   const gap = computeConsistentGap(sorted, "column");
   if (gap !== undefined) parentLayout.gap = gap;
@@ -494,8 +551,10 @@ function tryInferColumn(data: ChildLayoutData[], parentLayout: SimplifiedLayout)
 // ---- Row detection ---------------------------------------------------------
 
 function tryInferRow(data: ChildLayoutData[], parentLayout: SimplifiedLayout): boolean {
-  const yValues = data.map((d) => d.y);
-  if (Math.max(...yValues) - Math.min(...yValues) > ALIGN_TOLERANCE) return false;
+  // Cross axis of a row is vertical — children may share a top edge, a center
+  // line, or a bottom edge.
+  const alignment = detectCrossAlignment(data.map((d) => d.y), data.map((d) => d.height));
+  if (!alignment) return false;
 
   const sorted = [...data].sort((a, b) => a.x - b.x);
 
@@ -505,6 +564,7 @@ function tryInferRow(data: ChildLayoutData[], parentLayout: SimplifiedLayout): b
   }
 
   parentLayout.mode = "row";
+  if (alignment.alignItems) parentLayout.alignItems = alignment.alignItems;
 
   const gap = computeConsistentGap(sorted, "row");
   if (gap !== undefined) parentLayout.gap = gap;
