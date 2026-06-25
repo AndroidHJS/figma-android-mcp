@@ -180,6 +180,50 @@ Figma 输出的 CSS 字符串含 \`radial-gradient(circle at 50% 50%, ...)\`—�
 - ❌ 看到 \`circle\` → \`Canvas { drawCircle(...) }\`
 - ✅ 忽略 CSS 字符串里的 shape 关键词；按节点的 width/height/cornerRadius 建 Box，用 \`Brush.radialGradient(...)\` 做 background
 
+## 列表识别规则（强制，写容器前先判断）
+
+**选容器之前先判断：这个区域是不是"重复列表"。** 命中任一信号即是列表：
+
+- 节点带 \`_repeatOf\` 字段（压缩输出里 follower 项指向模板节点 id）
+- \`_compressionNotes\` 里出现 \`_repeatOf\` 说明
+- ≥2 个连续兄弟节点 \`type/layout/fills/strokes/cornerRadius\` 相同，只有文本/名字不同
+- ≥2 个兄弟 \`INSTANCE\` 节点共享同一 \`componentId\`
+
+**命中且重复项 ≥ 3 → 传统 View 必须用 \`RecyclerView + Adapter\`，禁止摊平成 N 个硬编码子 View。**
+
+| 端 | 列表写法 |
+|---|---|
+| 传统 View | \`RecyclerView\` + 独立 \`item_xxx.xml\`（取自模板节点 \`_repeatOf\` 所指，或第一个同构兄弟的子树） + \`RecyclerView.Adapter\` + \`ViewHolder\`，列表数据建一个 data class，\`itemCount\` 由数据驱动 |
+| Compose | \`LazyColumn\`（mode=column）/\`LazyRow\`（mode=row） + \`items(list) { item -> ItemRow(item) }\`，单独抽 \`@Composable\` item |
+
+要点：
+
+- item 布局 = **模板节点的子树**（\`_repeatOf\` 指向的那个节点，或第一个同构兄弟）；follower 节点的 \`texts\` 数组是每项要填的内容差异。
+- 列表方向取父容器 \`layout.mode\`（column→竖向，row→横向），项间距取 \`gap\`。
+- ❌ 把同构项一项项复制成多个 \`<LinearLayout>\` 平铺；❌ 写死列表长度。
+- 固定且 ≤2 项的小重复（如"确认/取消"两个按钮）不算列表，可直接手写。
+
+**传统 View 的 RecyclerView 必须带 \`tools:\` 设计时预览属性**（让 Android Studio 布局预览能渲染出列表，纯设计时、不影响运行时）：
+
+\`\`\`xml
+<androidx.recyclerview.widget.RecyclerView
+    android:id="@+id/rv_bank_card"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    tools:listitem="@layout/item_bank_card"
+    tools:itemCount="3"
+    tools:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+    tools:orientation="vertical" />
+\`\`\`
+
+- \`tools:listitem\` = item 布局（即上面那份 \`item_xxx.xml\`）
+- \`tools:itemCount\` = 预览项数，取 3 即可（仅预览，不是真实数量）
+- \`tools:layoutManager\` = 全限定类名：\`LinearLayoutManager\` / \`GridLayoutManager\` / \`StaggeredGridLayoutManager\`
+- \`tools:orientation\` = 取父容器 \`layout.mode\`：column→\`vertical\`，row→\`horizontal\`
+- 前提：根布局声明 \`xmlns:tools="http://schemas.android.com/tools"\`
+
+**反例（不是列表，别套 RecyclerView）：表单显示页 / 详情页 / 设置页。** 每行是 \`label + value\`（姓名/手机号/银行卡号…），字段固定、每行语义不同、数量写死、内容静态——用静态 \`LinearLayout(vertical)\` 或 \`ConstraintLayout\` 逐行手写（可用 \`<include>\` 复用行布局，但行本身写死）。判别：**同 \`componentId\` 的 INSTANCE 批量重复 = 列表**；**一组各自命名、字段不同的行 = 表单，静态布局**。
+
 ## 文本还原规则（强制）
 
 textStyle 数据按以下规则直译，禁止自行换算、省略或"看起来差不多"：
@@ -206,6 +250,15 @@ Android 默认的字体内边距让文本实际占高 ≠ Figma 的行高盒，�
 - 数据无 \`maxLines\` 字段时按节点高度 ÷ 行高估算行数，单行高度的节点用 1
 - 反向同样成立：textStyle **没有** textTruncation 的文本，禁止擅自加 maxLines / ellipsize
 
+### strings.xml 首尾空格（Compose 与 View 通用）
+
+Android 解析 \`strings.xml\` 时会自动 trim/折叠文本的首尾空白，直接在文案前后加空格无效。**Compose 的 \`stringResource()\` 与 View 的 \`@string\` 读的是同一份 strings.xml，规则一致。** 需要保留首尾空格时，必须用英文双引号把空格（或整段文案）包起来，空格才生效：
+
+- ❌ \`<string name="...">  Disbursement Account Name</string>\` —— 首部空格被吃掉
+- ✅ \`<string name="...">"  Disbursement Account Name"</string>\` —— 引号内空格保留
+
+只对**首尾**空格有影响，中间空格不用加引号。优先用 \`padding\` / \`margin\` 做留白，仅语义上确需内嵌空格时才用引号方案。
+
 ## 写完后自检（强制，单端各跑一次）
 
 - Compose：搜 \\\`Modifier\\.(width|size)\\(\\s*\\d+(?:\\.\\d+)?\\.dp\\\`，逐处核对是否落在白名单
@@ -223,6 +276,7 @@ Android 默认的字体内边距让文本实际占高 ≠ Figma 的行高盒，�
   - 搜 \`layout_weight="1"\` → 逐处核对：对应轴是否 0dp、直接父容器是否 LinearLayout、orientation 是否与 weight 轴一致、用途是否 space-between/fill（固定间距改 margin）
   - 搜 \`layout_gravity\` → 核对直接父容器：FrameLayout 任意方向有效；LinearLayout 仅垂直于 orientation 的轴有效；其他容器无效，需改写
   - 搜 \`app:layout_constraint\` → 核对布局数据是否确实含 \`layout_constraintHorizontal/Vertical\` 字段，或属于 3+ 子元素 space-between 链；都不是 → 改 FrameLayout/LinearLayout
+  - 列表摊平检查：设计数据出现 \`_repeatOf\` / 同 \`componentId\` 的兄弟 INSTANCE / ≥3 个同构兄弟节点 → 确认对应区域用了 \`RecyclerView + Adapter\`，没有把列表项复制成多个硬编码子 View（表单/详情页那种字段固定的逐行布局除外）
   - ${VIEWS_SELF_CHECK_ZH}
   - ${OVERHANG_SELF_CHECK_VIEWS_ZH}
   - grep \`android:lineHeight\` → 每处核对是否同时设置了 \`android:includeFontPadding="false"\`

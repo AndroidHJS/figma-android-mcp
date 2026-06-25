@@ -59,13 +59,11 @@
 /mcp
 ```
 
-看到以下 5 个工具即表示配置成功：
+看到以下 3 个工具即表示配置成功：
 
-- `get_figma_data`
 - `get_figma_node`
-- `get_figma_section`
-- `download_figma_images`
 - `get_skill`
+- `download_figma_images`
 
 ### 第四步：开始使用
 
@@ -95,17 +93,18 @@ Claude Code 将自动读取设计数据、下载图片资源并生成代码。
 
 | CLI 参数 | 环境变量 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `--port=<n>` | `PORT` | `3333` | HTTP 模式监听端口 |
+| `--port=<n>` | `FRAMELINK_PORT` / `PORT` | `3333` | HTTP 模式监听端口，`FRAMELINK_PORT` 优先于 `PORT` |
 | `--host=<host>` | `FRAMELINK_HOST` | `127.0.0.1` | HTTP 模式监听地址 |
 | `--stdio` | — | 关闭 | 启用 stdio 传输模式（推荐，MCP 客户端直接集成时使用） |
 | `--output-platform=<p>` | `OUTPUT_PLATFORM` | `compose` | 输出平台：`compose`（Jetpack Compose）/ `views`（传统 View/XML） |
 | `--design-density=<d>` | `FRAMELINK_DESIGN_DENSITY` | `auto` | 设计稿密度：`auto` / `mdpi` / `xhdpi` / `xxhdpi` |
 | `--image-dir=<path>` | `IMAGE_DIR` | 当前工作目录 | 图片资源保存根目录 |
 | `--skills-dir=<path>` | `SKILLS_DIR` | — | 技能文件目录，见[技能系统](#技能系统) |
+| `--env=<path>` | — | — | 指定 `.env` 文件路径，默认自动加载项目根目录 `.env` |
 | `--skip-image-downloads` | `SKIP_IMAGE_DOWNLOADS=true` | 关闭 | 禁用图片下载 |
 | `--json` | `OUTPUT_FORMAT=json` | YAML | 输出格式切换为 JSON |
 | `--proxy=<url>` | `FIGMA_PROXY` | — | Figma API 代理地址 |
-| `--no-telemetry` | `DO_NOT_TRACK` | 关闭 | 禁用遥测数据上报 |
+| `--no-telemetry` | `FRAMELINK_TELEMETRY=off` / `DO_NOT_TRACK` | 关闭 | 禁用遥测数据上报 |
 
 ### `--output-platform` 说明
 
@@ -168,49 +167,24 @@ Claude Code 将自动读取设计数据、下载图片资源并生成代码。
 
 ## MCP 工具
 
-配置成功后，AI 客户端可调用以下 5 个工具。通常无需手动调用，AI 会根据你的描述自动选择合适的工具。
+配置成功后，AI 客户端可调用以下 3 个工具。`get_figma_node` 是设计数据获取的唯一入口，无需区分节点类型。
 
-### `get_figma_data`
+### `get_figma_node`
 
-获取 Figma 文件或指定节点的完整设计数据，包括布局、文本、样式、组件信息。
+获取 Figma 文件或指定节点的完整设计数据，包括布局、文本、样式、组件信息。同时支持 SECTION 节点的多状态/多页面分组。
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `fileKey` | string | 是 | Figma 文件 Key，从 URL 中提取 |
-| `nodeId` | string | 否 | 节点 ID，格式如 `1234:5678`；不传则获取整个文件 |
+| `nodeId` | string | 是 | 节点 ID，格式如 `1234:5678` |
 | `depth` | number | 否 | 遍历深度，通常无需传入 |
 | `includePreview` | boolean | 否 | 是否附带节点渲染截图（PNG @2x） |
+| `manifestOnly` | boolean | 否 | 仅返回 SECTION 帧清单（含建议文件名），不需要子节点数据时设为 `true` |
 | `outputPlatform` | enum | 否 | `compose` / `views`，覆盖服务端默认设置 |
 
-> 返回数据包含 `imageAssets` 字段（需下载的图片列表），**生成代码前务必先调用 `download_figma_images` 下载图片资源**。
-
----
-
-### `get_figma_node`
-
-统一入口工具，自动检测节点类型并路由：
-
-- 传入 **SECTION 节点** → 路由到 `get_figma_section`，返回多状态分组数据
-- 传入 **FRAME / COMPONENT** 等 → 等同于 `get_figma_data`
-
-参数与 `get_figma_data` 相同，`nodeId` 为必填。
-
-> 不确定节点类型时优先使用此工具。
-
----
-
-### `get_figma_section`
-
-获取 Figma SECTION 节点下所有 FRAME 的设计数据。
-
-SECTION 通常包含同一页面的多种状态（如 `default` / `loading` / `error` / `empty`）。AI 会将其生成为**一个页面 + 状态管理**（sealed class / enum），而非多个独立页面。
-
-| 参数 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `fileKey` | string | 是 | Figma 文件 Key |
-| `sectionNodeId` | string | 是 | SECTION 节点 ID |
-| `depth` | number | 否 | 遍历深度 |
-| `outputPlatform` | enum | 否 | `compose` / `views` |
+- **FRAME / COMPONENT 节点** → 返回完整设计数据（布局、文本、样式、组件信息）
+- **SECTION 节点** → 按帧分组，返回多状态/多页面数据。>5 帧时自动返回清单模式（仅帧元数据），可按帧逐一获取详情
+- 返回数据包含 `imageAssets` 字段（需下载的图片列表），**生成代码前务必先调用 `download_figma_images` 下载图片资源**。
 
 ---
 
@@ -242,10 +216,25 @@ SECTION 通常包含同一页面的多种状态（如 `default` / `loading` / `e
 
 技能系统允许你通过 Markdown 文档约束 AI 生成代码的质量和规范，适合团队统一代码风格、强制执行项目规范。
 
+### 内置技能
+
+服务默认附带两个内置技能，**无需额外配置**即可生效：
+
+| 技能名 | 说明 |
+| --- | --- |
+| `android-layout` | **Android 布局规则（强制）** — 宽度响应式、纯色占位、列表识别（RecyclerView + Adapter）、strings.xml 首尾空格、常见反模式检测等强制约束。AI 生成 Android 布局代码前必须遵守。 |
+| `figma-android-mcp-skill` | **Figma → Android 还原流程** — 从 Figma URL 到代码的完整工作流：解析输入 → 截图对比 → 获取设计数据 → 资源分组 → 下载资源 → 生成代码。AI 检测到设计还原意图时自动触发。 |
+
+AI 可在生成代码前调用 `get_skill("android-layout")` 加载布局约束，或调用 `get_skill("figma-android-mcp-skill")` 启动还原流程。
+
+### 自定义技能
+
+如需扩展团队规范，可在 `.claude/skills/` 目录下创建 Markdown 文件。**自定义技能与内置技能同名时，自定义优先**，可用于覆盖内置规则的特定部分。
+
 ### 工作原理
 
 1. 在 `.claude/skills/` 目录下创建 Markdown 文件，描述代码规范或约束规则
-2. AI 调用 `get_figma_data` / `get_figma_node` 时，返回数据中会包含 `_REQUIRED_RULES` 字段
+2. AI 调用 `get_figma_node` 时，返回数据中会包含 `_REQUIRED_RULES` 字段（`workflow` 类技能不在此列，需手动调用 `get_skill()`）
 3. `_REQUIRED_RULES` 引用相关技能文件，**AI 在生成代码前必须读取并遵守这些约束**
 
 ### 目录结构示例
@@ -258,9 +247,19 @@ SECTION 通常包含同一页面的多种状态（如 `default` / `loading` / `e
     └── component-rules.md    # 组件封装规则
 ```
 
+> 以上为自定义扩展，内置技能已随服务提供，无需重复创建。
+
 ### 技能文件示例
 
+技能文件必须以 YAML frontmatter 开头，声明 `name`、`title` 和 `description`：
+
 ```markdown
+---
+name: compose-style
+title: Compose 代码风格规范
+description: 约束 Compose 代码的命名、状态管理和组件抽取规则
+---
+
 # Compose 代码风格规范
 
 ## 组件命名
@@ -302,7 +301,7 @@ SECTION 通常包含同一页面的多种状态（如 `default` / `loading` / `e
 
 ## 常见问题
 
-### Q1：输入 `/mcp` 后看不到 5 个工具？
+### Q1：输入 `/mcp` 后看不到 3 个工具？
 
 检查以下几点：
 
@@ -355,7 +354,7 @@ SECTION 通常包含同一页面的多种状态（如 `default` / `loading` / `e
 把这个 Section 转成 Compose 页面，用 sealed class 管理状态，不要生成多个独立页面：<URL>
 ```
 
-或直接使用 `get_figma_section` 工具获取 SECTION 节点数据。
+`get_figma_node` 会自动识别 SECTION 节点并按状态分组返回，无需使用其他工具。
 
 ## License
 
