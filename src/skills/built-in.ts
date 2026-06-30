@@ -1,4 +1,5 @@
 import type { Skill } from "./types.js";
+import type { OutputPlatform } from "~/config.js";
 import {
   COMPOSE_OFFSET_RULES_ZH,
   COMPOSE_OFFSET_SELF_CHECK_ZH,
@@ -12,7 +13,23 @@ import {
   OVERHANG_SELF_CHECK_VIEWS_ZH,
 } from "./overhang-policy.js";
 
-export const builtInSkills: Skill[] = [
+/**
+ * Strip platform-specific blocks the target platform doesn't need. Rules wrapped
+ * in `<!--compose-->…<!--/compose-->` or `<!--views-->…<!--/views-->` markers are
+ * kept only for the matching platform; unmarked content applies to both. This
+ * halves the rule noise the LLM sees, since `outputPlatform` is fixed per server.
+ */
+export function filterByPlatform(raw: string, platform: OutputPlatform): string {
+  const drop = platform === "compose" ? "views" : "compose";
+  return raw
+    .replace(new RegExp(`<!--${drop}-->\\n?[\\s\\S]*?<!--/${drop}-->\\n?`, "g"), "")
+    .replace(/<!--\/?(?:compose|views)-->\n?/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function buildBuiltInSkills(platform: OutputPlatform): Skill[] {
+  return [
   {
     name: "android-layout",
     title: "Android 布局规则（强制）",
@@ -20,7 +37,7 @@ export const builtInSkills: Skill[] = [
     category: "layout",
     instructions: "生成 Android 布局代码（Compose 或传统 View）时触发。强制执行 Figma 到 Android 的布局约束：宽度响应式、纯色占位、反模式检测。在写完任何 XML/Compose 布局代码前必须调用此技能。",
     triggers: ["宽度响应式", "响应式布局"],
-    content: `# 宽度响应式规则（强制，不允许偏离）
+    content: filterByPlatform(`# 宽度响应式规则（强制，不允许偏离）
 
 Figma 数据里所有节点宽度都是固定 dp，**禁止字面翻译**。Android 设备宽度跨度大（320dp ~ 600dp+），字面翻译会在非基线设备上裁切或偏左堆积。
 
@@ -86,10 +103,12 @@ Figma 数据里所有节点宽度都是固定 dp，**禁止字面翻译**。Andr
 View → ✅ 父容器高度至少等于最大子 View 的 bottom 坐标，或用 wrap_content
 Compose → ✅ 父容器不设固定高度，用默认 wrapContentHeight() 或 IntrinsicSize
 
+<!--views-->
 ### CheckBox 用 src 设图标（View 专属）
 
 - ❌ \`android:src\` 给 CheckBox 设自定义图标 → ✅ 用 \`android:button="@drawable/selector_xxx"\` 状态列表 drawable
 - Compose → ✅ 用带状态的自定义 Composable
+<!--/views-->
 
 ### 硬编码容器总高度
 
@@ -105,18 +124,23 @@ Compose → ✅ 父容器不设固定高度，用默认 wrapContentHeight() 或 
 - View → ✅ 每个 FRAME/GROUP 考虑对应一个 \`LinearLayout\` / \`FrameLayout\`
 - Compose → ✅ 每个 FRAME/GROUP 考虑对应一个 \`Column\` / \`Row\` / \`Box\`
 
+<!--compose-->
 ### Compose 用 absoluteOffset 模拟间距
 
 - ❌ 在 Column/Row 子项上用 \`Modifier.absoluteOffset()\` 推开元素 → ✅ 用 \`Arrangement.spacedBy()\` 统一控制，或在子项之间插入 \`Spacer\`
 
 ${COMPOSE_OFFSET_RULES_ZH}
+<!--/compose-->
 
+<!--views-->
 ${VIEWS_OFFSET_RULES_ZH}
+<!--/views-->
 
 ${OVERLAY_RULES_ZH}
 
 ${OVERHANG_RULES_ZH}
 
+<!--views-->
 ### android:elevation 替代 boxShadow（View 专属，高发）
 
 boxShadow 是 CSS box-shadow 语法（offsetX offsetY blur spread color），必须转为 \`<layer-list>\` drawable（\`<shape>\` 阴影层）。负 Y 偏移（如 \`0dp -3dp ...\`）表示阴影向上投——elevation 完全无法表达。
@@ -144,7 +168,9 @@ boxShadow 是 CSS box-shadow 语法（offsetX offsetY blur spread color），必
 
 - ❌ 单个子元素套 ConstraintLayout 只为居中/右锚 → ✅ FrameLayout + \`layout_gravity\`
 - ❌ 单轴顺序排列套 ConstraintLayout → ✅ LinearLayout
+<!--/views-->
 
+<!--compose-->
 ### ContentScale.Fit 误用到 Figma 切图（Compose 专属，高发）
 
 对已下载的 Figma PNG 切图使用 ContentScale.Fit。
@@ -179,6 +205,7 @@ Figma 输出的 CSS 字符串含 \`radial-gradient(circle at 50% 50%, ...)\`—�
 
 - ❌ 看到 \`circle\` → \`Canvas { drawCircle(...) }\`
 - ✅ 忽略 CSS 字符串里的 shape 关键词；按节点的 width/height/cornerRadius 建 Box，用 \`Brush.radialGradient(...)\` 做 background
+<!--/compose-->
 
 ## 列表识别规则（强制，写容器前先判断）
 
@@ -203,6 +230,7 @@ Figma 输出的 CSS 字符串含 \`radial-gradient(circle at 50% 50%, ...)\`—�
 - ❌ 把同构项一项项复制成多个 \`<LinearLayout>\` 平铺；❌ 写死列表长度。
 - 固定且 ≤2 项的小重复（如"确认/取消"两个按钮）不算列表，可直接手写。
 
+<!--views-->
 **传统 View 的 RecyclerView 必须带 \`tools:\` 设计时预览属性**（让 Android Studio 布局预览能渲染出列表，纯设计时、不影响运行时）：
 
 \`\`\`xml
@@ -221,6 +249,7 @@ Figma 输出的 CSS 字符串含 \`radial-gradient(circle at 50% 50%, ...)\`—�
 - \`tools:layoutManager\` = 全限定类名：\`LinearLayoutManager\` / \`GridLayoutManager\` / \`StaggeredGridLayoutManager\`
 - \`tools:orientation\` = 取父容器 \`layout.mode\`：column→\`vertical\`，row→\`horizontal\`
 - 前提：根布局声明 \`xmlns:tools="http://schemas.android.com/tools"\`
+<!--/views-->
 
 **反例（不是列表，别套 RecyclerView）：表单显示页 / 详情页 / 设置页。** 每行是 \`label + value\`（姓名/手机号/银行卡号…），字段固定、每行语义不同、数量写死、内容静态——用静态 \`LinearLayout(vertical)\` 或 \`ConstraintLayout\` 逐行手写（可用 \`<include>\` 复用行布局，但行本身写死）。判别：**同 \`componentId\` 的 INSTANCE 批量重复 = 列表**；**一组各自命名、字段不同的行 = 表单，静态布局**。
 
@@ -259,8 +288,9 @@ Android 解析 \`strings.xml\` 时会自动 trim/折叠文本的首尾空白，�
 
 只对**首尾**空格有影响，中间空格不用加引号。优先用 \`padding\` / \`margin\` 做留白，仅语义上确需内嵌空格时才用引号方案。
 
-## 写完后自检（强制，单端各跑一次）
+## 写完后自检（强制）
 
+<!--compose-->
 - Compose：搜 \\\`Modifier\\.(width|size)\\(\\s*\\d+(?:\\.\\d+)?\\.dp\\\`，逐处核对是否落在白名单
 - Compose 额外检查：
   - 搜 \`ContentScale\.Fit\` → 全部核对，Figma 切图应使用 \`ContentScale.FillBounds\`
@@ -270,6 +300,8 @@ Android 解析 \`strings.xml\` 时会自动 trim/折叠文本的首尾空白，�
   - 搜 \`drawCircle\` → 全部核实：节点是否是 GRADIENT_RADIAL fill？是 → 改为 Box + Modifier.background(Brush.radialGradient(...))。仅当节点本身就是圆形矢量路径时才保留 drawCircle。
   - ${OVERHANG_SELF_CHECK_COMPOSE_ZH}
   - 搜 \`lineHeight\\s*=\` → 每处核对是否同时设置了 \`PlatformTextStyle(includeFontPadding = false)\` 与 \`LineHeightStyle\`
+<!--/compose-->
+<!--views-->
 - View：grep \\\`layout_width="\\d+dp"\\\`，逐处核对是否落在白名单
 - View 额外检查：
   - 搜 \`android:elevation\` → 全部替换为 \`<layer-list>\` drawable 实现（或删掉阴影）；elevation 禁止用于还原 boxShadow
@@ -280,9 +312,10 @@ Android 解析 \`strings.xml\` 时会自动 trim/折叠文本的首尾空白，�
   - ${VIEWS_SELF_CHECK_ZH}
   - ${OVERHANG_SELF_CHECK_VIEWS_ZH}
   - grep \`android:lineHeight\` → 每处核对是否同时设置了 \`android:includeFontPadding="false"\`
+<!--/views-->
 
 不落白名单的，必须按上面表格重写。
-`,
+`, platform),
   },
   {
     name: "figma-android-mcp-skill",
@@ -551,4 +584,5 @@ const otherAssets = imageAssets.filter(a => a.category === "auto-detected");
 - \`MCP 工具名\` 在 Claude Code 里可能带命名空间前缀（\`mcp__<别名>__get_figma_data\`），调用时按当前环境实际名字调即可，不要硬编码
 `,
   },
-];
+  ];
+}

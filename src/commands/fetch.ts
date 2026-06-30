@@ -121,7 +121,7 @@ async function run(
   const figmaService = new FigmaService(auth);
   // Load skills (built-in + optional custom dir) just like the MCP server, so
   // CLI output carries the same `_REQUIRED_RULES` section.
-  const skills = loadSkills(resolveSkillsDir(flags.skillsDir));
+  const skills = loadSkills(resolveSkillsDir(flags.skillsDir), outputPlatform);
   const onComplete = (outcome: Parameters<typeof captureGetFigmaDataCall>[0]) =>
     captureGetFigmaDataCall(outcome, { transport: "cli", authMode: mode });
 

@@ -44,7 +44,7 @@ function createServer(
   });
   const figmaService = new FigmaService(authOptions);
   const mode = authMode(authOptions);
-  const skills = loadSkills(skillsDir);
+  const skills = loadSkills(skillsDir, outputPlatform);
 
   const getClientInfo = (): ClientInfo | undefined => {
     const info = server.server.getClientVersion();

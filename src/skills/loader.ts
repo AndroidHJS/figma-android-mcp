@@ -1,8 +1,9 @@
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, extname } from "node:path";
 import { load as parseYaml } from "js-yaml";
-import { builtInSkills } from "./built-in.js";
+import { buildBuiltInSkills } from "./built-in.js";
 import type { Skill, SkillMeta } from "./types.js";
+import type { OutputPlatform } from "~/config.js";
 
 const FRONTMATTER_REGEX = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/;
 
@@ -57,11 +58,14 @@ function loadSkillsFromDir(dir: string): Skill[] {
 /**
  * Load all skills (built-in + optional custom directory).
  * Custom skills override built-in skills with the same name.
+ *
+ * `platform` selects which platform-specific rules the built-in skills emit
+ * (compose vs views); unmarked rules apply to both. Defaults to compose.
  */
-export function loadSkills(customDir?: string): Skill[] {
+export function loadSkills(customDir?: string, platform: OutputPlatform = "compose"): Skill[] {
   const skillMap = new Map<string, Skill>();
 
-  for (const skill of builtInSkills) {
+  for (const skill of buildBuiltInSkills(platform)) {
     skillMap.set(skill.name, skill);
   }
 
