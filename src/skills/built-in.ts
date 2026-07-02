@@ -43,13 +43,24 @@ Figma 数据里所有节点宽度都是固定 dp，**禁止字面翻译**。Andr
 
 ## 布局规则
 
-| 场景判定 | 原则 | Compose | 传统 View |
-|---------|------|---------|----------|
-| 容器宽度 ≥ 屏宽 × 0.85 | 撑满父级 + 水平边距 | \`Modifier.fillMaxWidth().padding(horizontal = N.dp)\` | \`width=match_parent\` + \`marginHorizontal=Ndp\` |
-| 横向布局里"吃满剩余空间"的子元素 | 弹性占位 | \`Modifier.weight(1f)\`（Row/RowScope 内） | \`width=0dp\` + \`layout_weight=1\` |
-| 靠右边缘锚定的元素 | 右锚 + 右边距 | \`Modifier.align(Alignment.CenterEnd).padding(end = N.dp)\`（Box 内） | \`gravity=end\` + \`marginEnd=Ndp\` |
-| 文本宽度 | 内容驱动 | 不指定 / \`wrapContentWidth()\` | \`width=wrap_content\` |
-| 真·固定尺寸资源 ✅ | 保持设计 dp | \`Modifier.size(W.dp, H.dp)\` | \`layout_width/height="Wdp"\` |
+<!--compose-->
+| 场景判定 | 原则 | Compose |
+|---------|------|---------|
+| 容器宽度 ≥ 屏宽 × 0.85 | 撑满父级 + 水平边距 | \`Modifier.fillMaxWidth().padding(horizontal = N.dp)\` |
+| 横向布局里"吃满剩余空间"的子元素 | 弹性占位 | \`Modifier.weight(1f)\`（Row/RowScope 内） |
+| 靠右边缘锚定的元素 | 右锚 + 右边距 | \`Modifier.align(Alignment.CenterEnd).padding(end = N.dp)\`（Box 内） |
+| 文本宽度 | 内容驱动 | 不指定 / \`wrapContentWidth()\` |
+| 真·固定尺寸资源 ✅ | 保持设计 dp | \`Modifier.size(W.dp, H.dp)\` |
+<!--/compose-->
+<!--views-->
+| 场景判定 | 原则 | 传统 View |
+|---------|------|----------|
+| 容器宽度 ≥ 屏宽 × 0.85 | 撑满父级 + 水平边距 | \`width=match_parent\` + \`marginHorizontal=Ndp\` |
+| 横向布局里"吃满剩余空间"的子元素 | 弹性占位 | \`width=0dp\` + \`layout_weight=1\` |
+| 靠右边缘锚定的元素 | 右锚 + 右边距 | \`gravity=end\` + \`marginEnd=Ndp\` |
+| 文本宽度 | 内容驱动 | \`width=wrap_content\` |
+| 真·固定尺寸资源 ✅ | 保持设计 dp | \`layout_width/height="Wdp"\` |
+<!--/views-->
 
 ## 固定 dp 宽度白名单（仅三类允许）
 
@@ -74,8 +85,12 @@ Figma 数据里所有节点宽度都是固定 dp，**禁止字面翻译**。Andr
 
 **正确做法**：取该节点的主色（fills 里的第一种纯色），或邻近父容器的背景色，画一个同尺寸的色块占位：
 
+<!--compose-->
 - Compose：\`Box(Modifier.size(<W>.dp, <H>.dp).background(Color(0xFF...)))\`
+<!--/compose-->
+<!--views-->
 - 传统 View：\`<View android:layout_width="<W>dp" android:layout_height="<H>dp" android:background="#..."/>\`
+<!--/views-->
 
 可以加一行注释标明 \`// 待替换：figma 节点 <nodeId> 的实际图像\` 便于后续手动补资源。
 
@@ -88,20 +103,32 @@ Figma 数据里所有节点宽度都是固定 dp，**禁止字面翻译**。Andr
 多个无重叠的视觉区域用硬编码间隔摊平到一个容器。
 
 - ❌ 多个区域堆在单个 FrameLayout / Box 里靠 margin/padding 推开
+<!--views-->
 - View → ✅ 用 \`LinearLayout(vertical)\` 包裹各区域，区域之间自然排列
+<!--/views-->
+<!--compose-->
 - Compose → ✅ 用 \`Column\` 包裹各区域，间距用 \`Spacer\` 或 \`Arrangement.spacedBy()\`
+<!--/compose-->
 
 ### 对齐与偏移矛盾
 
+<!--views-->
 - View：\`layout_gravity="center_horizontal"\` 和 \`layout_marginStart\` 同时使用 → ✅ 二选一：居中用 gravity，靠左用 margin
+<!--/views-->
+<!--compose-->
 - Compose：\`Modifier.align(Alignment.CenterHorizontally)\` 和 \`padding(start=...)\` 同时控制水平位置 → ✅ 二选一：居中用 align，靠左用 \`padding(start=...)\`
+<!--/compose-->
 
 ### 子元素超出父容器
 
 子元素尺寸大于父容器（如 344dp 的图片放在 150dp 的容器里）
 
+<!--views-->
 View → ✅ 父容器高度至少等于最大子 View 的 bottom 坐标，或用 wrap_content
+<!--/views-->
+<!--compose-->
 Compose → ✅ 父容器不设固定高度，用默认 wrapContentHeight() 或 IntrinsicSize
+<!--/compose-->
 
 <!--views-->
 ### CheckBox 用 src 设图标（View 专属）
@@ -114,15 +141,23 @@ Compose → ✅ 父容器不设固定高度，用默认 wrapContentHeight() 或 
 
 用固定 dp 值锁定容器高度。
 
+<!--views-->
 - View：\`layout_height="1361dp"\` → ✅ 用 \`wrap_content\`，ScrollView 自动处理滚动
+<!--/views-->
+<!--compose-->
 - Compose：\`Modifier.height(1361.dp)\` → ✅ 去掉固定高度，\`LazyColumn\` / \`verticalScroll\` 自动处理
+<!--/compose-->
 
 ### 跳过嵌套容器
 
 看到 Figma 的 FRAME 节点，直接把子元素提升到顶层。
 
+<!--views-->
 - View → ✅ 每个 FRAME/GROUP 考虑对应一个 \`LinearLayout\` / \`FrameLayout\`
+<!--/views-->
+<!--compose-->
 - Compose → ✅ 每个 FRAME/GROUP 考虑对应一个 \`Column\` / \`Row\` / \`Box\`
+<!--/compose-->
 
 <!--compose-->
 ### Compose 用 absoluteOffset 模拟间距
@@ -216,18 +251,20 @@ Figma 输出的 CSS 字符串含 \`radial-gradient(circle at 50% 50%, ...)\`—�
 - ≥2 个连续兄弟节点 \`type/layout/fills/strokes/cornerRadius\` 相同，只有文本/名字不同
 - ≥2 个兄弟 \`INSTANCE\` 节点共享同一 \`componentId\`
 
-**命中且重复项 ≥ 3 → 传统 View 必须用 \`RecyclerView + Adapter\`，禁止摊平成 N 个硬编码子 View。**
+**命中且重复项 ≥ 3 → 必须用数据驱动的列表控件（见下方"列表写法"），禁止摊平成 N 个硬编码子项。**
 
-| 端 | 列表写法 |
-|---|---|
-| 传统 View | \`RecyclerView\` + 独立 \`item_xxx.xml\`（取自模板节点 \`_repeatOf\` 所指，或第一个同构兄弟的子树） + \`RecyclerView.Adapter\` + \`ViewHolder\`，列表数据建一个 data class，\`itemCount\` 由数据驱动 |
-| Compose | \`LazyColumn\`（mode=column）/\`LazyRow\`（mode=row） + \`items(list) { item -> ItemRow(item) }\`，单独抽 \`@Composable\` item |
+<!--views-->
+列表写法：\`RecyclerView\` + 独立 \`item_xxx.xml\`（取自模板节点 \`_repeatOf\` 所指，或第一个同构兄弟的子树） + \`RecyclerView.Adapter\` + \`ViewHolder\`，列表数据建一个 data class，\`itemCount\` 由数据驱动。
+<!--/views-->
+<!--compose-->
+列表写法：\`LazyColumn\`（mode=column）/\`LazyRow\`（mode=row） + \`items(list) { item -> ItemRow(item) }\`，单独抽 \`@Composable\` item。
+<!--/compose-->
 
 要点：
 
 - item 布局 = **模板节点的子树**（\`_repeatOf\` 指向的那个节点，或第一个同构兄弟）；follower 节点的 \`texts\` 数组是每项要填的内容差异。
 - 列表方向取父容器 \`layout.mode\`（column→竖向，row→横向），项间距取 \`gap\`。
-- ❌ 把同构项一项项复制成多个 \`<LinearLayout>\` 平铺；❌ 写死列表长度。
+- ❌ 把同构项一项项复制成多个硬编码子容器平铺；❌ 写死列表长度。
 - 固定且 ≤2 项的小重复（如"确认/取消"两个按钮）不算列表，可直接手写。
 
 <!--views-->
@@ -251,7 +288,7 @@ Figma 输出的 CSS 字符串含 \`radial-gradient(circle at 50% 50%, ...)\`—�
 - 前提：根布局声明 \`xmlns:tools="http://schemas.android.com/tools"\`
 <!--/views-->
 
-**反例（不是列表，别套 RecyclerView）：表单显示页 / 详情页 / 设置页。** 每行是 \`label + value\`（姓名/手机号/银行卡号…），字段固定、每行语义不同、数量写死、内容静态——用静态 \`LinearLayout(vertical)\` 或 \`ConstraintLayout\` 逐行手写（可用 \`<include>\` 复用行布局，但行本身写死）。判别：**同 \`componentId\` 的 INSTANCE 批量重复 = 列表**；**一组各自命名、字段不同的行 = 表单，静态布局**。
+**反例（不是列表，别套列表控件）：表单显示页 / 详情页 / 设置页。** 每行是 \`label + value\`（姓名/手机号/银行卡号…），字段固定、每行语义不同、数量写死、内容静态——用静态布局逐行手写、行本身写死<!--views-->（\`LinearLayout(vertical)\` 或 \`ConstraintLayout\`，可用 \`<include>\` 复用行布局）<!--/views--><!--compose-->（\`Column\` + 逐行独立 \`@Composable\`）<!--/compose-->。判别：**同 \`componentId\` 的 INSTANCE 批量重复 = 列表**；**一组各自命名、字段不同的行 = 表单，静态布局**。
 
 ## 文本还原规则（强制）
 
@@ -261,21 +298,33 @@ textStyle 数据按以下规则直译，禁止自行换算、省略或"看起来
 
 Android 默认的字体内边距让文本实际占高 ≠ Figma 的行高盒，多行文本逐行累积偏差：
 
+<!--compose-->
 - Compose → \`lineHeight = N.sp\` 必须同时配 \`platformStyle = PlatformTextStyle(includeFontPadding = false)\` 与 \`lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None)\`
+<!--/compose-->
+<!--views-->
 - View → \`android:lineHeight="Nsp"\`（API 28+）+ \`android:includeFontPadding="false"\`
+<!--/views-->
 - lineHeight 为 \`150%\` 形式时 → fontSize × 1.5 得到 sp 值后按上面处理
 - textStyle **没有** lineHeight（设计用 auto 行高）→ 不要设置行高，跟随字体默认
 
 ### letterSpacing（数据已是 em，直接照抄）
 
+<!--compose-->
 - Compose → \`letterSpacing = N.em\`（不是 \`.sp\`）
+<!--/compose-->
+<!--views-->
 - View → \`android:letterSpacing="N"\`（该属性本身就是 em 倍数，照抄数值、不带单位）
+<!--/views-->
 - ❌ 禁止把 em 数值当 sp/dp 使用，禁止再做任何单位换算
 
 ### 文本截断（textStyle 带 \`textTruncation: ENDING\`）
 
+<!--compose-->
 - Compose → \`maxLines = N\` + \`overflow = TextOverflow.Ellipsis\`
+<!--/compose-->
+<!--views-->
 - View → \`android:maxLines="N"\` + \`android:ellipsize="end"\`
+<!--/views-->
 - 数据无 \`maxLines\` 字段时按节点高度 ÷ 行高估算行数，单行高度的节点用 1
 - 反向同样成立：textStyle **没有** textTruncation 的文本，禁止擅自加 maxLines / ellipsize
 

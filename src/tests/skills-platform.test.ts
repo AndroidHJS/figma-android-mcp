@@ -36,6 +36,37 @@ describe("android-layout platform filtering", () => {
     expect(content).not.toContain("absoluteOffset");
   });
 
+  // The dual-content sections (布局表/纯色占位/反模式 bullets/列表写法/文本还原/
+  // overlay/overhang) are now split too, so a single-platform output should carry
+  // essentially no syntax from the other platform.
+  it("views output carries no Compose syntax from the previously-shared sections", () => {
+    const content = androidLayout("views");
+    for (const tok of [
+      "Modifier.",
+      "LazyColumn",
+      "SnackbarHost",
+      "ModalBottomSheet",
+      "LaunchedEffect",
+      "TextOverflow",
+      "@Composable",
+    ]) {
+      expect(content).not.toContain(tok);
+    }
+  });
+
+  it("compose output carries no View syntax from the previously-shared sections", () => {
+    const content = androidLayout("compose");
+    for (const tok of [
+      "android:layout_",
+      "LinearLayout",
+      "BottomSheetDialog",
+      "RecyclerView",
+      "match_parent",
+    ]) {
+      expect(content).not.toContain(tok);
+    }
+  });
+
   it("shared rules survive on both platforms", () => {
     for (const platform of ["compose", "views"] as const) {
       const content = androidLayout(platform);

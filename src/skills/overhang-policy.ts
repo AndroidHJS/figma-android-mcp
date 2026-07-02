@@ -40,7 +40,7 @@ export const OVERHANG_RULES_ZH = `## 越界元素规则（弹窗 banner / 骑跨
 **标准还原法——透明根重构（两端同构）**：
 
 1. 用**透明**根容器包住宿主+骑跨元素，高度 = 宿主高 + overhang
-2. 宿主下移 overhang（Compose: \`Modifier.padding(top = overhang)\`；View: \`layout_marginTop\`）
+2. 宿主下移 overhang（<!--compose-->Compose: \`Modifier.padding(top = overhang)\`<!--/compose--><!--views-->View: \`layout_marginTop\`<!--/views-->）
 3. 骑跨元素声明在宿主**之后**（后声明者在上层），按其 anchor/insets 定位
 
 **禁止项**：
@@ -51,10 +51,16 @@ export const OVERHANG_RULES_ZH = `## 越界元素规则（弹窗 banner / 骑跨
 
 **弹窗容器必须透明化**（否则自带的圆角白底会把越界部分裁掉）：
 
-- \`presentation: "bottomSheet"\` → Compose \`ModalBottomSheet(containerColor = Color.Transparent)\`；View \`BottomSheetDialog\` 的 bottomSheetStyle 背景设透明。可见白底由内部子元素承担。
-- \`presentation: "centerDialog"\` → Compose \`Dialog\` 根容器透明（默认 Surface 形状会裁剪）；View 弹窗主题 \`android:windowBackground\` 设透明。
+<!--compose-->
+- \`presentation: "bottomSheet"\` → \`ModalBottomSheet(containerColor = Color.Transparent)\`，可见白底由内部子元素承担。
+- \`presentation: "centerDialog"\` → \`Dialog\` 根容器透明（默认 Surface 形状会裁剪）。
+<!--/compose-->
+<!--views-->
+- \`presentation: "bottomSheet"\` → \`BottomSheetDialog\` 的 bottomSheetStyle 背景设透明，可见白底由内部子元素承担。
+- \`presentation: "centerDialog"\` → 弹窗主题 \`android:windowBackground\` 设透明。
+<!--/views-->
 
-**clipsContent 门控**：父容器 layout **没有** \`clipsContent: false\` 时，越界部分在设计中本来就被裁掉（如卡片角落露一半的装饰圆）——**禁止**"好心"还原它。View 默认裁剪行为已与设计一致；Compose 需补 \`Modifier.clip(shape)\` 保持裁剪。`;
+**clipsContent 门控**：父容器 layout **没有** \`clipsContent: false\` 时，越界部分在设计中本来就被裁掉（如卡片角落露一半的装饰圆）——**禁止**"好心"还原它。<!--views-->View 默认裁剪行为已与设计一致，字面翻译即可。<!--/views--><!--compose-->Compose 需补 \`Modifier.clip(shape)\` 保持裁剪。<!--/compose-->`;
 
 /** Chinese self-check lines for overhang audits, both platforms. */
 export const OVERHANG_SELF_CHECK_COMPOSE_ZH = `搜 \`padding\\([^)]*-\\d\` 与 \`offset\\([^)]*-\\d\` → 负 padding 必删；负 offset 仅当父链确定不裁剪才允许，否则改透明根重构。数据带 straddle/anchorOverhang 时核对弹窗容器是否已透明化`;

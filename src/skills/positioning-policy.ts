@@ -44,7 +44,7 @@ val offsetY by animateFloatAsState(...)
 Modifier.offset { IntOffset(0, offsetY.roundToInt()) }
 \`\`\`
 
-传统 View 平台的对应阶梯见 VIEWS_OFFSET_RULES_ZH，不在此处重复。`;
+（传统 View 平台在其规则集中有对应的 margin 定位阶梯，此处不重复。）`;
 
 /** Chinese self-check line for `.offset(` audits, shared by both skills. */
 export const COMPOSE_OFFSET_SELF_CHECK_ZH = `搜 \`.offset(\` → 核对是否落在定位准则第 4/5 级（重叠散点兜底 或 动画驱动）；若数据带 anchorAlignment/anchorMargin（第 3 级），改 align + padding 直译；若子元素实际无重叠且单轴有序（第 2 级），改 Column/Row + 坐标差间距`;
